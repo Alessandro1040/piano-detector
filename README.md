@@ -14,6 +14,25 @@ sfruttando due classi:
 Il riquadro scelto è quello con confidenza più alta tra i `Piano`; se non c'è,
 si usa la migliore `Musical keyboard`.
 
+## Modelli preaddestrati usati
+
+Il progetto **non allena niente da zero**: mette insieme componenti già addestrate
+da terzi e le fa cooperare.
+
+| modello | pesi | cosa fa nel progetto |
+|---|---|---|
+| **YOLOv8l / YOLOv8m — Open Images V7** (Ultralytics) | `weights/yolov8l-oiv7.pt` (84 MB), `weights/yolov8m-oiv7.pt` (50 MB) | oggetto "Piano"/"Musical keyboard": trovare la tastiera (motore `pipeline`, `calibrato`, e passo "Prepara il video") |
+| **MediaPipe HandLandmarker** (float16) | `weights/hand_landmarker.task` (7.4 MB) | 21 landmark per mano → dove stanno le dita (motore `pipeline`, filtro mani) |
+| **PPAN — «Pay Attention to the Keys»** (ViT-S, ~84 MB) | nel progetto esterno `pianovision-ppan` | predice direttamente il piano roll dal ritaglio della tastiera (motore `ppan`) |
+
+I quattro **motori** dello Studio li usano così:
+
+- `pipeline` → YOLOv8 (riquadro tastiera) **+** MediaPipe (dita);
+- `ppan` → la rete ViT-S pretrainata (nessun YOLO, nessun MediaPipe);
+- `prospettica` e `calibrato` → **nessuna rete neurale**, solo `cv2`/`numpy`: la griglia dei
+  88 tasti è ricostruita dalla sola geometria (YOLOv8 serve solo a stimare i 4 angoli
+  della tastiera se non li segni a mano).
+
 ## Installazione
 
 ```bash
