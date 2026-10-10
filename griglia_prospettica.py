@@ -399,6 +399,42 @@ def passo_profilo(frame):
     sulla stessa banda, gli altri 56 non cambiano. Costo: 1,65 s contro 0,73 s su un fotogramma
     1920x1080 (2,3x).
     """
+    fuori = _profilo_bande(frame)
+    if not fuori:
+        return None
+    mig = _scelta_profilo(fuori)
+    return mig[0], mig[1], mig[2], mig[3], mig[4]
+
+
+def passo_profilo_coerente(frame):
+    """Come `passo_profilo`, ma dice anche se il passo scelto viene da una banda COERENTE coi neri.
+
+    `passo_profilo` prende il massimo NCC fra le bande coerenti e, se non ce n'e' nessuna, il
+    massimo NCC e basta (vedi la sua docstring): in quel secondo caso il passo puo' essere
+    un'armonica, e dal solo numero non si vede. Chi deve decidere SE FIDARSI del passo ha bisogno di
+    quel bit. Misurato su `video5906842636420915152.mp4` (848x464, tastiera inclinata): sul
+    fotogramma a 2,5 s il profilo da' NCC 0,51 con passo 79,48 px, cioe' sei volte i 13,3 veri --
+    l'armonica del frontale -- e nessuna banda e' coerente, quindi il bit e' falso. Chi lo usa e'
+    `avvio_utile` di `0_prepara.py`: uno spostamento dell'inizio giustificato da un passo senza banda
+    coerente e' uno spostamento ingiustificato, perche' sposta il profilo da "non e' una prova" (NCC
+    sotto `_NCC_PROFILO_MIN`) a "e' una prova a carico" senza portare nessuna misura nuova.
+
+    Ritorna `(s, fase, ncc, ya, yb, coerente)` o `None` se il profilo non da' nessun picco.
+    """
+    fuori = _profilo_bande(frame)
+    if not fuori:
+        return None
+    mig = _scelta_profilo(fuori)
+    return mig[0], mig[1], mig[2], mig[3], mig[4], bool(mig[5])
+
+
+def _profilo_bande(frame):
+    """I picchi `(s, fase, ncc, ya, yb, coerente)` di tutte le bande di righe, o una lista vuota.
+
+    E' il corpo di `passo_profilo`, separato perche' serve anche a `passo_profilo_coerente` (che
+    dello stesso calcolo usa anche il bit `coerente`: i tratti scuri della banda larghi come un
+    nero, `_COERENZA_NERI`). Le bande che non hanno nessun picco non entrano.
+    """
     g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     h, w = g.shape
     T = _soglia(g)
@@ -412,11 +448,13 @@ def passo_profilo(frame):
             r = None if med is None else med / (BW * s0)
             fuori.append((s0, f0, val0, ya, yb,
                           r is not None and _COERENZA_NERI[0] <= r <= _COERENZA_NERI[1]))
-    if not fuori:
-        return None
+    return fuori
+
+
+def _scelta_profilo(fuori):
+    """Il picco che vince fra `fuori`: il massimo NCC fra le bande coerenti, o il massimo NCC."""
     coerenti = [c for c in fuori if c[5]]
-    mig = max(coerenti or fuori, key=lambda c: c[2])
-    return mig[0], mig[1], mig[2], mig[3], mig[4]
+    return max(coerenti or fuori, key=lambda c: c[2])
 
 
 def H_profilo(frame, nota_gruppo2=61):
@@ -637,8 +675,260 @@ def H_iniziale(frame, nota_gruppo2=61):
         raise RuntimeError("griglia iniziale non calcolabile")
     return max(cand, key=lambda c: c[1])[0]
 
+def _fine_blocco(frame, y0, leggi):
+    """L'ultima riga del blocco dei neri: righe con almeno 5 neri, contigue (tolleranza 4 righe)."""
+    h = frame.shape[0]
+    y = y0
+    fondo = int(0.85 * h)
+    while y + 1 < fondo and (len(leggi(y + 1)) >= 5 or len(leggi(y + 2)) >= 5):
+        y += 1
+    return y
+
+
+def _fronte_bianco_obliqua(g, T, x, passo, punte, fondo_max):
+    """Dove finisce il BIANCO di quel tasto: la scala verticale vera, tasto per tasto.
+
+    Fra il bordo posteriore e la punta dei neri la fascia e' chiara (i bianchi ci sono sempre);
+    sotto il fronte dei bianchi c'e' la cassa, che e' scura: si cerca la prima riga in cui la
+    frazione di pixel chiari in una striscia attorno al tasto crolla sotto meta' di quella che
+    c'e' appena sotto le punte dei neri. Si misura tasto per tasto perche' anche il fronte e'
+    INCLINATO come il bordo posteriore: su questa ripresa la sua riga cambia di 30 px da un capo
+    all'altro della fascia misurata, e una riga sola per tutti i tasti sposterebbe la scala.
+    """
+    h, w = g.shape
+    a, b = int(max(0, x - 0.35 * passo)), int(min(w, x + 0.35 * passo))
+    if b - a < 4:
+        return None
+    chiaro = (g[:, a:b] > T).mean(axis=1)
+    i0 = int(max(0, punte))
+    fin = int(min(h, fondo_max))
+    if fin <= i0 + 2:
+        return None
+    rif = float(np.max(chiaro[i0 + 1:min(fin, i0 + 7)]))
+    if rif < 0.5:
+        return None
+    for y in range(i0 + 1, fin):
+        if chiaro[y] < 0.55 * rif:
+            return y
+    return None
+
+
+def _tracce_oblique(frame):
+    """I neri uno per uno: centro su una riga di riferimento, inizio (bordo) e punta.
+
+    Ritorna `(grigio, soglia, passo riga, tracce, riga di riferimento)` o `None`. Le tracce sono
+    `{"x_ref", "w", "x_up", "y_up", "x_dn", "y_dn", "lungh"}`: `x_up`/`y_up` e' dove il nero
+    comincia (il bordo posteriore, che e' inclinato) e `x_dn`/`y_dn` dove finisce. Il cammino tiene
+    il centro del run dentro il passo (mezzo tasto), cosi' non salta sul nero vicino.
+    """
+    y0, _ya, _yb, _pieno, leggi = banda_neri(frame)
+    y1 = _fine_blocco(frame, y0, leggi)
+    g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    T = _soglia(g)
+    conta = {y: len(leggi(y)) for y in range(y0, y1 + 1)}
+    y_ref = max(conta, key=lambda y: conta[y])
+    rif = leggi(y_ref)
+    sp = np.diff([c for c, _ in rif])
+    if sp.size < 3 or sp.min() <= 0:
+        return None
+    piccolo = float(np.median(sp[sp < 1.4 * sp.min()]))     # distacco piccolo = 1,15 bianchi
+    if piccolo < 4.0:
+        return None
+    passo = piccolo / 1.15
+    tr = []
+    for c, wd in rif:
+        ym, xm = y_ref, c
+        while ym - 1 >= y0:
+            v = [(cc, ww) for cc, ww in leggi(ym - 1) if abs(cc - xm) < 0.5 * passo]
+            if not v:
+                break
+            xm = min(v, key=lambda t: abs(t[0] - xm))[0]; ym -= 1
+        x_up, y_up = xm, ym
+        ym, xm = y_ref, c
+        while ym + 1 <= y1:
+            v = [(cc, ww) for cc, ww in leggi(ym + 1) if abs(cc - xm) < 0.5 * passo]
+            if not v:
+                break
+            xm = min(v, key=lambda t: abs(t[0] - xm))[0]; ym += 1
+        tr.append({"x_ref": float(c), "w": float(wd), "x_up": float(x_up), "y_up": float(y_up),
+                   "x_dn": float(xm), "y_dn": float(ym), "lungh": float(ym - y_up)})
+    if len(tr) < 4:
+        return None
+    return g, T, passo, tr, y_ref, y1, leggi
+
+
+def tastiera_obliqua(frame, nota_gruppo2=61):
+    """Le misure di una tastiera obliqua e piccola, dai neri uno per uno -- o `None`.
+
+    Serve dove gli altri due ancoraggi non hanno niente da leggere: la tastiera e' piccola,
+    inclinata e sfuocata, il profilo di colonne spalma ogni nero su quelli vicini (NCC sotto
+    `_NCC_PROFILO_MIN` = 0,45 di `0_prepara.py`) e i neri non si accoppiano fra due quote perche'
+    il blocco e' alto poche righe: la riga di misura `ya = y0 + 25` di `banda_neri` cade fuori dal
+    blocco, `_H_iniziale_classico` si arrende con "neri insufficienti" e non nasce nemmeno il
+    candidato "neri" di `0_prepara.py`. Misurato su `document_5931401697506107171.mp4` (478x850,
+    ritratto, tastiera alta 38 px su 850): il blocco dei neri e' 261..276, i neri larghi 10-13 px
+    con passo 13,26, la sequenza dei distacchi fa il disegno giusto (FA# SOL# LA# | DO# RE# |
+    FA# SOL#), ma la scala VERTICALE che il modello assume -- quella orizzontale, 13,26 -- e'
+    quattro volte quella vera (3,4: i neri veri sono lunghi 14 px, un modello isotropo li farebbe
+    alti 54). Gli altri due ancoraggi davano 0 inlier su ogni ritaglio provato (intero, banda del
+    profilo, fascia dei tasti); questo ne da 42 sulla sola misura.
+
+    Le tre cose che all'ancoraggio classico mancavano, tutte dai neri uno per uno:
+      1. il bordo posteriore non e' una riga, e' una retta INCLINATA (`inclinazione`);
+      2. la scala verticale e' MISURATA -- punte dei neri e fronte dei bianchi -- non copiata da
+         quella orizzontale: su una ripresa obliqua le due non hanno niente a che fare;
+      3. il passo si legge lungo quel bordo (ascissa d'arco), non su una riga orizzontale.
+    Il disegno 2/3 e l'ottava restano quelli di `_H_iniziale_classico` (stesso `nota_gruppo2`,
+    stesso centro della tastiera letto dai neri misurati): cambia solo come si MISURA.
+
+    Ritorna `{"H", "passo", "passo_y", "retro", "inclinazione", "punte", "fronte", "x_neri",
+    "note"}`: `passo`/`passo_y` sono i passi in pixel per bianco (orizzontale lungo il bordo e
+    verticale), `retro` la y di partenza dei neri al centro della fascia, `fronte` dove finiscono
+    i bianchi (`None` se non si e' misurato), `x_neri`/`note` i centri misurati con la loro nota.
+    """
+    m = _tracce_oblique(frame)
+    if m is None:
+        return None
+    g, T, passo, tr, _y_ref, y1, _leggi = m
+    h, w = g.shape
+    xs = np.array([t["x_up"] for t in tr])
+    ys = np.array([t["y_up"] for t in tr])
+    if float(np.ptp(xs)) < max(0.20 * w, 2.0 * passo):
+        return None
+    # 1. il bordo posteriore: la retta degli inizi dei neri, con una passata di scarto (un nero
+    #    coperto o sfuocato puo' cominciare piu' in alto o piu' in basso degli altri).
+    c = np.polyfit(xs, ys, 1)
+    ok = np.abs(np.polyval(c, xs) - ys) < max(3.0, 0.35 * passo)
+    if int(ok.sum()) >= 4:
+        tr = [t for t, k in zip(tr, ok) if k]
+        xs, ys = xs[ok], ys[ok]
+        c = np.polyfit(xs, ys, 1)
+    retro, incl = float(np.median(ys)), float(c[0])
+    ux = np.array([1.0, incl]); ux /= np.linalg.norm(ux)
+    tt = xs * ux[0] + ys * ux[1]                     # ascissa d'arco lungo il bordo posteriore
+    o = np.argsort(tt)
+    tt, xs, ys = tt[o], xs[o], ys[o]
+    tr = [tr[i] for i in o]
+    dt = np.diff(tt)
+    if dt.size < 3 or dt.min() <= 0:
+        return None
+    # 2. le punte dei neri: quelle camminate per intero (vedi `_tracce_oblique`). Una camminata
+    #    piu' corta del blocco -- il run si perde prima della punta o si allarga fino a fondersi
+    #    col tasto vicino -- non e' una misura di punta: all'omografia si passano solo quelle
+    #    buone (almeno 3), e il passo si legge su quelle, che sono i neri di cui si sa tutto.
+    #    Il disegno 2/3 dei distacchi invece si legge su TUTTI i neri trovati: i gruppi da due e
+    #    da tre si vedono anche dove la punta non e' stata camminata, e buttando quei neri il
+    #    disegno si spezza (provato: 4 neri buoni = "nessun gruppo da 2 neri" e ancora nessuna
+    #    griglia).
+    lungh_blocco = float(y1 - retro)
+    sane = [t for t in tr if 0.6 * lungh_blocco <= t["lungh"] <= 1.6 * lungh_blocco]
+    if len(sane) >= 3:
+        tt_p = np.sort(np.array([t["x_up"] * ux[0] + t["y_up"] * ux[1] for t in sane]))
+    else:
+        tt_p = tt
+    dt_p = np.diff(tt_p)
+    if dt_p.size < 3 or dt_p.min() <= 0:
+        return None
+    piccolo = float(np.median(dt_p[dt_p < 1.4 * dt_p.min()]))
+    s_u = piccolo / 1.15                             # passo in bianchi lungo il bordo posteriore
+    if not 4.0 <= s_u <= 0.05 * w:
+        return None
+    fondo_max = int(round(retro + 2.6 * max(float(passo), lungh_blocco) + 8))
+    fronti = [_fronte_bianco_obliqua(g, T, t["x_up"], s_u, y1, fondo_max) for t in tr]
+    buoni = [y for y in fronti if y is not None]
+    fronte = float(np.median(buoni)) if len(buoni) >= 3 else None
+    # 3. le note: stesso schema 2/3 e stesso centro della tastiera di `_H_iniziale_classico`.
+    #    Il disegno dei distacchi dice la nota DENTRO l'ottava (un distacco da 1,78 passi e' il
+    #    salto fra un gruppo e l'altro), non l'ottava: quella la sceglie il centro della tastiera.
+    reg = list(tt)
+    c0 = int(np.argmin(np.abs(np.asarray(reg) - np.median(reg))))
+    im = jm = c0
+    while im > 0 and reg[im] - reg[im - 1] <= 3.6 * piccolo:
+        im -= 1
+    while jm + 1 < len(reg) and reg[jm + 1] - reg[jm] <= 3.6 * piccolo:
+        jm += 1
+    xc_tast = 0.5 * (reg[im] + reg[jm])
+    # Il distacco "grande" (1,78 passi: il salto fra un gruppo e l'altro) si separa dal piccolo
+    # (1,12-1,20) sulla scala MISURATA (`s_u`), non su `dt.min()`: un nero che non si e' letto bene
+    # sposta la camminata e accorcia un distacco (misurato qui: 9 px al posto di 15), e con la
+    # soglia relativa a quel minimo TUTTI i distacchi diventavano "grandi" -- sei gruppi da un nero,
+    # "nessun gruppo da 2 neri", ancora nessuna griglia.
+    grande = dt > 1.45 * s_u
+    gruppi, cur = [], [0]
+    for i, gr in enumerate(grande):
+        if gr:
+            gruppi.append(cur); cur = [i + 1]
+        else:
+            cur.append(i + 1)
+    gruppi.append(cur)
+    due = [k for k, gp in enumerate(gruppi) if len(gp) == 2]
+    if not due:
+        return None
+    k2 = min(due, key=lambda k: abs(float(np.mean([reg[i] for i in gruppi[k]])) - xc_tast))
+    i0 = gruppi[k2][0]
+    ordine = [n for n in range(NOTA_MIN, NOTA_MAX + 1) if e_nero(n)]
+    j0 = ordine.index(nota_gruppo2)
+    note = [ordine[j0 + i - i0] if 0 <= j0 + i - i0 < len(ordine) else None
+            for i in range(len(xs))]
+
+    # 4. l'omografia dai punti misurati: il bordo posteriore (v = 0) e le punte dei neri (v = LB).
+    #    La scala VERTICALE viene da queste due quote misurate, che e' quello che all'ancoraggio
+    #    classico mancava: con la sola riga dei neri resta indeterminata e il modello si prende per
+    #    forza quella orizzontale. Il fronte dei bianchi (v = LW) NON entra: la sua x va portata in
+    #    basso lungo la sbandata dei neri, che su una prospettiva cosi' forte vale decine di pixel
+    #    e misurarla dalla camminata e' un azzardo (provato: peggiora la griglia, 36 inlier invece
+    #    di 42). Quel che serve del fronte -- dove finiscono i bianchi -- lo scrive `affina` e,
+    #    quando la griglia non e' ancorata, `griglia_da_immagine` di `0_prepara.py`.
+    src, dst = [], []
+    for i, t in enumerate(tr):
+        if note[i] is None:
+            continue
+        u = u_nero(note[i])
+        src.append((u, 0.0)); dst.append((t["x_up"], t["y_up"]))
+        if t in sane:
+            src.append((u, LB)); dst.append((t["x_dn"], t["y_dn"]))
+    if len(src) < 7:
+        return None
+    # Affine, non omografia piena: sette neri misurati su un fotogramma non identificano la
+    # prospettiva, e quello che l'omografia non sa lo inventa -- estrapolando sugli 81 tasti che
+    # non si vedono il modello si apre a ventaglio (provato: passo medio 17 px contro 13,26 veri e
+    # un tasto ogni 28 px sul bordo sinistro, che e' muro). La prospettiva vera la rimette `affina`
+    # qui sotto, che ha decine di corrispondenze sui neri e non ha niente da inventare.
+    A, _ = cv2.estimateAffine2D(np.float32(src), np.float32(dst), method=cv2.RANSAC,
+                               ransacReprojThreshold=3.0)
+    if A is None or not np.isfinite(A).all():
+        return None
+    H = np.vstack([A, [0.0, 0.0, 1.0]])
+    s_y = lungh_blocco / LB
+    if fronte is not None and fronte > y1:
+        s_bianchi = (fronte - retro) / LW
+        if 0.7 * s_y <= s_bianchi <= 2.5 * s_y:
+            s_y = s_bianchi
+    return {"H": np.float64(H), "passo": s_u, "passo_y": s_y, "retro": retro,
+            "inclinazione": incl, "punte": float(y1), "fronte": fronte,
+            "x_neri": [float(t["x_ref"]) for t in tr],
+            "note": [n for n in note if n is not None]}
+
+
+def H_obliqua(frame, nota_gruppo2=61, min_in=10):
+    """L'ancoraggio obliquo: le misure di `tastiera_obliqua`, affinate come tutte le altre.
+
+    E' un RIPIEGO, quindi non deve peggiorare niente: si ritorna `(H, inlier)` solo se `affina`
+    aggancia almeno `min_in` neri veri (su `document_5931401697506107171.mp4`: 42 sulla sola
+    misura), altrimenti `None` e chi chiama resta con quello che aveva.
+    """
+    d = tastiera_obliqua(frame, nota_gruppo2)
+    if d is None:
+        return None
+    g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    H, k = affina(g, d["H"], rosso(frame), 3)
+    if k < min_in:
+        return None
+    return np.float64(H), int(k)
+
 
 # ------------------------------------------------- inseguimento, con i freni
+
 # Il flusso ottico da solo non tiene la griglia sulla tastiera. Quando il fotogramma cambia
 # molto (un braccio, un tablet, gente che passa davanti) l'omografia del flusso puo' uscirsene
 # con un salto qualsiasi, e da li' in poi la griglia e' persa -- senza che nessuno se ne
