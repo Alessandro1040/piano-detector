@@ -390,7 +390,9 @@ def avvio_utile(video, inizio, durata, frame):
     sopra la soglia per un pelo, e la griglia che ne esce ha 8 tasti neri fuori posto su 34 (quando
     si sceglie la fase la mano copre ancora la tastiera); a 2,0 s l'NCC è 0,62 e i neri fuori posto
     sono 0. Quindi si prende il primo fotogramma che legge BENE (`_NCC_PROFILO_MIN +
-    _AVVIO_CIECO_BUONO`) e solo se non ce n'è nessuno uno che legge appena.
+    _AVVIO_CIECO_BUONO`); uno che legge appena vale solo se il suo passo e' una MISURA e non
+    un'armonica (`passo_profilo_coerente`: la banda ha i tratti scuri larghi come un nero) e, quando
+    nemmeno quello c'e', solo se il fotogramma di partenza non e' nemmeno un'ancora.
 
     Si sposta l'INIZIO e non solo la misura per due ragioni: quel fotogramma nel dataset è inutile
     (la tastiera è coperta, il tasto premuto non si vede) e la griglia inseguita col ritaglio parte
@@ -418,6 +420,18 @@ def avvio_utile(video, inizio, durata, frame):
     1436x198, cioè i soli tasti. Quindi: se nessuno legge E il fotogramma di partenza non è
     un'ancora, si ripiega sul primo che lo è; se invece il fotogramma di partenza è già un'ancora
     (il caso obliquo, dove il profilo legge male ma ci si sa lavorare) non si tocca niente.
+
+    IL "LEGGE APPENA" CHE NON VALE (misurato l'11/10/2026 su `video5906842636420915152.mp4`,
+    848x464, tastiera inclinata): sul fotogramma 0 il profilo da' NCC 0,37 e il passo 0 ne fa una
+    griglia da 8,84 px con 288 inlier e l'ECC a tutta immagine a 0,90 -- verdetto "ok" e 216/224
+    fotogrammi inseguiti. A 2,5 s il profilo "legge" (NCC 0,51, sopra la soglia per un pelo) ma il
+    passo e' 79,48 px, sei volte i 13,3 veri: un'armonica, e nessuna banda ha i tratti scuri larghi
+    come un nero. Spostando li' l'inizio il profilo smette di essere illeggibile e diventa una prova
+    a carico (l'ECC scende a 0,77): il verdetto diventa "rifiuto" e il video non si prepara piu'.
+    Per questo decide il bit di `passo_profilo_coerente`: senza di lui "legge appena" sposta l'inizio
+    anche quando non porta nessuna misura nuova. Su `2024-09-02_20-00-16` (fotogramma 0 nero, profilo
+    che non tocca mai la soglia) il primo fotogramma che legge appena HA la banda coerente (26,05 px,
+    misurati sui neri) e l'inizio si sposta come prima.
     """
     p = G.passo_profilo(frame)
     ncc = float(p[2]) if p is not None else 0.0
@@ -435,20 +449,42 @@ def avvio_utile(video, inizio, durata, frame):
         cap.set(cv2.CAP_PROP_POS_FRAMES, int(round(t * fps)))
         ok, f = cap.read()
         if ok:
-            q = G.passo_profilo(f)
+            q = G.passo_profilo_coerente(f)            # serve anche il bit "banda coerente coi neri"
+            fidato = bool(q[5]) if q is not None else False
             if q is not None and float(q[2]) >= _NCC_PROFILO_MIN:
                 if letto is None:                      # il primo che legge: è il minimo che basta
-                    letto = (t, f, float(q[2]))
+                    letto = (t, f, float(q[2]), fidato)
                 if float(q[2]) >= _NCC_PROFILO_MIN + _AVVIO_CIECO_BUONO:
                     buono = (t, f, float(q[2]))         # ... ma uno letto BENE vale di più: si prende
                     break                               # quello, e si smette di cercare
             elif ancora is None and ancora_utile(f, q):
-                ancora = (t, f, float(q[2]) if q is not None else None)   # non legge, ma ci si lavora
+                # non legge, ma ci si lavora (il fotogramma nero ha bisogno di questo ripiego)
+                ancora = (t, f, float(q[2]) if q is not None else None, fidato)
         t += _AVVIO_CIECO_PASSO
     cap.release()
-    scelto = buono or letto
-    if scelto is None and ancora is not None and not ancora_utile(frame, p):
-        scelto = ancora                                 # meglio un'ancora che un fotogramma nero
+    # Quando spostare l'inizio NON e' giustificato: il fotogramma di partenza e' gia' un'ancora (il
+    # profilo da' un passo, magari con NCC basso: il caso obliquo, dove il passo 0 ci sa lavorare) e
+    # nessun fotogramma legge BENE. Li' "legge appena" non e' una ragione per spostare: la soglia
+    # `_NCC_PROFILO_MIN` e' bassa apposta (sotto di lei il profilo non e' una prova, vedi `verdetto`),
+    # quindi un fotogramma a NCC 0,51 sposta il profilo da "non e' una prova" a "e' una prova a
+    # carico" senza portare nessuna misura nuova -- e con un passo che puo' essere un'armonica.
+    # Misurato su `video5906842636420915152.mp4` (848x464, tastiera inclinata): sul fotogramma 0 il
+    # profilo da' NCC 0,37 e la griglia sta sui tasti con 288 inlier e l'ECC a tutta immagine a 0,90
+    # (verdetto "ok", 216/224 fotogrammi inseguiti, il pezzo si prepara); spostando l'inizio a 2,5 s
+    # (NCC 0,51, passo 79,5 px = sei volte i 13,3 veri) l'ECC scende a 0,77 e il verdetto diventa
+    # "rifiuto" (passo 11,7 px contro 79,5), cioe' il video non si prepara piu'. La partenza si
+    # sposta quindi solo per un fotogramma letto BENE (`buono`), o quando la partenza non e' nemmeno
+    # un'ancora (fotogramma nero, buio, camera che si accende: li' qualunque cosa che si lasci
+    # misurare e' meglio, `ancora` o `letto`).
+    partenza_utile = ancora_utile(frame, p)
+    scelto = buono
+    if scelto is None and letto is not None and letto[3]:
+        # Legge appena, ma la banda ha i tratti scuri larghi come un nero: e' una misura, non
+        # un'armonica. E' il caso di `2024-09-02_20-00-16` (fotogramma 0 nero, profilo sempre sotto
+        # la soglia), dove spostare l'inizio a 0,5 s e' quello che fa uscire il verdetto "ok".
+        scelto = letto
+    if scelto is None and not partenza_utile:
+        scelto = ancora or letto                        # meglio un'ancora che un fotogramma nero
     if scelto is None:
         return t0, frame, None
     letto_ncc = f"{scelto[2]:.2f}" if scelto[2] is not None else "nessuna periodicità"
@@ -1875,6 +1911,66 @@ def candidati_auto(frame, margine, fondo, video=None, inizio=0.0, durata=0.0):
     return fuori
 
 
+def candidato_obliquo(frame):
+    """Il ritaglio di ripiego per la tastiera obliqua e piccola -- o `None` se non è il caso.
+
+    È l'ULTIMA spiaggia, e ci si arriva solo quando oggi non esce nessuna griglia: il profilo di
+    colonne non legge (NCC sotto `_NCC_PROFILO_MIN`: su una tastiera obliqua spalma ogni nero su
+    quelli vicini), i neri non si accoppiano fra due quote (`banda_dai_neri` è `None`: il blocco è
+    alto meno di 25 righe, la riga di misura di `banda_neri` cade fuori) e la scelta di oggi sarebbe
+    "rifiuto" -- cioè oggi non esce nessuna griglia (vedi `main`, che qui prova il ripiego solo se
+    la scelta di prima sarebbe "rifiuto" e solo se questo viene meglio di "rifiuto"). Un video che
+    oggi una griglia ce l'ha, "ok" o anche solo "incerto", non entra mai qui: per tutti gli altri
+    questo ritorna `None` e la scelta di prima resta quella di prima, byte per byte.
+
+    Il ritaglio lo detta la MISURA, non il profilo: `tastiera_obliqua` (vedi
+    `griglia_prospettica`) legge i neri uno per uno e dice dove cominciano (il bordo posteriore,
+    che è inclinato), dove finiscono i bianchi (il fronte) e il passo. La fascia è quella fra il
+    bordo e il fronte con un margine VERO sopra e sotto, perché la ricerca dei neri di `banda_neri`
+    guarda le righe fra il 15% e l'85% dell'altezza del ritaglio: con la fascia appoggiata sul
+    bordo posteriore -- com'è il candidato "intero" di oggi su questo video, y 262..512 -- quelle
+    righe cadono fuori dal ritaglio e la misura non c'è più (misurato:
+    `document_5931401697506107171.mp4`, dentro quella fascia 0 inlier, dentro questa 47 coi neri
+    agganciati uno per uno).
+    """
+    h, w = frame.shape[:2]
+    p = G.passo_profilo(frame)
+    if p is None or float(p[2]) >= _NCC_PROFILO_MIN:
+        return None
+    if banda_dai_neri(frame) is not None:
+        return None                     # il caso di sempre: la tastiera si legge
+    try:
+        obl = G.tastiera_obliqua(frame)
+    except (RuntimeError, ValueError):
+        return None
+    if obl is None or obl.get("fronte") is None:
+        return None
+    retro, punte, fronte = float(obl["retro"]), float(obl["punte"]), float(obl["fronte"])
+    alt = fronte - retro
+    if not 6.0 <= alt <= 0.5 * h:
+        return None
+    y1 = max(0, int(round(retro - 0.35 * alt)))
+    y2 = min(h, int(round(fronte + 0.35 * alt)))
+    if y2 - y1 < 40 or w < 200:
+        return None
+    info = {"metodo": "auto", "ritaglio": "obliquo", "obliqua": True,
+            "passo_profilo": round(float(p[0]), 2), "fase": round(float(p[1]), 1),
+            "ncc": round(float(p[2]), 3), "banda_neri": [int(retro), int(punte)],
+            "obliquo": {"passo": round(float(obl["passo"]), 2),
+                        "passo_y": round(float(obl["passo_y"]), 2),
+                        "retro": round(retro, 1), "fronte": round(fronte, 1),
+                        "punte": round(punte, 1),
+                        "inclinazione": round(float(obl["inclinazione"]), 5),
+                        "x_neri": [round(float(x), 1) for x in obl["x_neri"]],
+                        "note": [G.nome(n) for n in obl["note"]],
+                        "perche": "il profilo non legge e i neri non si accoppiano fra due quote: "
+                                  "passo, bordo posteriore e fronte misurati sui neri uno per uno"},
+            "banda_dai_neri": {"passo": None, "y_inizio": None,
+                               "perche": f"nessun accoppiamento fra due quote (NCC {float(p[2]):.2f} "
+                                         f"sotto {_NCC_PROFILO_MIN})"}}
+    return _pari((0, y1, w, y2)), info
+
+
 def rettangolo_manuale(testo, w, h):
     """Rettangolo dato a mano, in pixel del video originale: x1,y1,x2,y2."""
     try:
@@ -2075,7 +2171,7 @@ def _adatta_retro(g, H, cc):
 
 
 def griglia_nel_ritaglio(frame, rect, ancora=False, estremi=None, verticale=None,
-                         campioni_video=None):
+                         campioni_video=None, obliqua=False):
     """La griglia che il motore troverebbe DENTRO il ritaglio, coi numeri per fidarsi o no.
 
     `tasti_fuori` conta i tasti del modello (LA0..DO8) che cadono oltre i bordi del ritaglio:
@@ -2114,7 +2210,18 @@ def griglia_nel_ritaglio(frame, rect, ancora=False, estremi=None, verticale=None
     x1, y1, x2, y2 = rect
     r = frame[y1:y2, x1:x2]
     g = cv2.cvtColor(r, cv2.COLOR_BGR2GRAY)
-    Hi = np.asarray(G.H_iniziale(r), dtype=float)
+    # Il candidato "obliquo" (vedi `candidato_obliquo`) ha l'ancoraggio suo: dentro questa fascia
+    # `H_iniziale` non ha niente da leggere -- il blocco dei neri e' alto 15 righe, la riga di
+    # misura di `_H_iniziale_classico` cade fuori e il profilo di colonne su una tastiera obliqua
+    # non e' una misura -- mentre `H_obliqua` legge i neri uno per uno e li' ne aggancia 47.
+    # Se l'ancoraggio obliquo non riesce si resta su `H_iniziale`, come tutti gli altri candidati.
+    Ho = G.H_obliqua(r) if obliqua else None
+    if Ho is not None:
+        Hi = np.asarray(Ho[0], dtype=float)
+        print(f"[griglia] ancoraggio obliquo: {Ho[1]} inlier sui neri, "
+              f"passo {G.passo_griglia(Hi):.2f} px")
+    else:
+        Hi = np.asarray(G.H_iniziale(r), dtype=float)
     ecc_cc = None                      # correlazione dell'allineamento all'immagine (se fatto)
     lb_nero = G.LB
     if ancora and estremi is not None:
@@ -4584,12 +4691,16 @@ def main():
             candidati = candidati[1:]        # l'utente vuole direttamente quello tagliato ai lati
     prove = []
     estremi_incerto = None
-    for rect_i, info_i in candidati:
+
+    def _prova(rect_i, info_i):
+        """La griglia di un candidato nel suo ritaglio, col verdetto e la riga di log."""
+        nonlocal estremi_incerto
         try:
             numeri_i = griglia_nel_ritaglio(frame, rect_i, ancora=info_i.get("ancora", False),
                                             estremi=info_i.get("_estremi"),
                                             verticale=info_i.get("_verticale"),
-                                            campioni_video=info_i.get("_campioni"))
+                                            campioni_video=info_i.get("_campioni"),
+                                            obliqua=bool(info_i.get("obliqua")))
             v_i, perche_i = verdetto(numeri_i, info_i.get("passo_profilo"),
                                      ncc_profilo=info_i.get("ncc"),
                                      auto=info_i.get("metodo") == "auto")
@@ -4615,10 +4726,34 @@ def main():
         if tag in ("neri", "estremi") and v_i != "ok":
             if tag == "estremi" and v_i == "incerto":
                 estremi_incerto = (rect_i, info_i, numeri_i, v_i, perche_i)
+            return None
+        return (rect_i, info_i, numeri_i, v_i, perche_i)
+
+    for rect_i, info_i in candidati:
+        esito = _prova(rect_i, info_i)
+        if esito is None:
             continue
-        prove.append((rect_i, info_i, numeri_i, v_i, perche_i))
-        if v_i == "ok":
+        prove.append(esito)
+        if esito[3] == "ok":
             break
+    # L'ultima spiaggia, per la tastiera obliqua e piccola: `candidato_obliquo` ritorna un ritaglio
+    # solo quando il profilo non legge e i neri non si accoppiano fra due quote, e qui lo si prova
+    # solo se NESSUN candidato di sopra è arrivato a "ok" E la scelta di oggi sarebbe "rifiuto",
+    # cioè se oggi non esce nessuna griglia (con "rifiuto" il video preparato non si scrive nemmeno:
+    # vedi `main`). Un video che oggi una griglia ce l'ha -- "ok" o anche solo "incerto" -- non
+    # entra in questo ramo, e la scelta di prima resta identica: la griglia, il verdetto, il json e
+    # il video sono quelli di prima, byte per byte. Il ripiego entra in `prove` solo se è meglio di
+    # "rifiuto": non può mai peggiorare il verdetto di un video, al massimo glielo dà.
+    if not any(t[3] == "ok" for t in prove) and prove:
+        oggi = scelta_finale(prove, estremi_incerto)[3]
+        if oggi == "rifiuto":
+            obliquo = candidato_obliquo(frame)
+            if obliquo is not None:
+                esito = _prova(*obliquo)
+                if esito is not None and esito[3] != "rifiuto":
+                    prove.append(esito)
+                    print("[scelta] nessun candidato arrivava a una griglia (tutti 'rifiuto'): "
+                          "entra il ritaglio 'obliquo', misurato sui tasti neri uno per uno")
     # a parità di verdetto si tiene quella con più inlier, come prima. I candidati "neri" ed
     # "estremi" hanno peso solo quando sono l'UNICO "ok" (allora il ciclo sopra si ferma lì e il
     # verdetto decide): così sui video dove i candidati sono tutti "incerto" il ritaglio resta
@@ -4764,6 +4899,35 @@ def main():
                       f"restano il ritaglio e la griglia del primo fotogramma")
                 Ms = None
                 inseguito["segue"] = False
+                # SE LA TASTIERA SI MUOVE DAVVERO, quel ritaglio non basta: la griglia del primo
+                # fotogramma esce dai tasti e il video preparato non e' piu' il pezzo. Il movimento
+                # qui non lo dice l'inseguimento (ha fallito: e' il numero di cui NON fidarsi), lo
+                # dicono i 4 angoli dei tasti misurati in `tastiera_ferma` -- la misura indipendente
+                # che ha acceso l'inseguimento. Sopra `_SOGLIA_SEGUI_TASTI` il ritaglio fermo perde
+                # la tastiera (vedi la costante) e qui il passo 0 non sa seguirla: meglio rifiutare
+                # il pezzo che consegnare un video con i riquadri accanto ai tasti per tutto il
+                # pezzo. Misurato su `document_5931401697506107171.mp4` (478x850, telefono a mano,
+                # tastiera obliqua e sfocata): gli angoli si spostano di 54,1 px in x e 21,3 px in y
+                # (tolleranze 8 e 12) dentro un ritaglio alto 68 px e l'inseguimento aggancia 12
+                # fotogrammi su 80 -- dopo il motion blur dei fotogrammi 12-14 non si riprende piu'
+                # (con piu' punti di riferimento, modo affine e soglie di aggancio piu' basse: 12-31
+                # su 80, tutte misurate). Prima usciva lo stesso un video 478x68 "stabilizzato" con
+                # la griglia sul muro: adesso il pezzo si rifiuta e il perche' sta nel json.
+                # `--insegui 0` resta il modo esplicito di chiedere lo stesso il ritaglio fermo.
+                if (angoli or {}).get("decisa") == "si muove":
+                    motivo = (f"la tastiera si muove ({angoli['x_max_px']:.0f} px in x e "
+                              f"{angoli['y_max_px']:.0f} px in y, oltre i "
+                              f"{angoli['tolleranza_x_px']:.0f}/{angoli['tolleranza_y_px']:.0f} px di "
+                              f"tolleranza) e l'inseguimento non l'ha tenuta "
+                              f"({inseguito['agganciati']} fotogrammi su {inseguito['frame']} "
+                              f"agganciati, inlier mediano {inseguito['inlier_mediano']}): col "
+                              f"ritaglio fermo sul primo fotogramma la griglia esce dai tasti, quindi "
+                              f"il video preparato non si scrive (un pezzo che si muove vuole una "
+                              f"ripresa che lo tenga in campo; `--insegui 0` scrive lo stesso il "
+                              f"ritaglio del primo fotogramma)")
+                    info["verdetto"] = "rifiuto"
+                    info["perche"] = f"{info['perche']}; {motivo}" if info["perche"] else motivo
+                    print(f"[!] pezzo rifiutato: {motivo}")
             elif inseguito["spostamento_tasti"] > _SOGLIA_SEGUI_TASTI:
                 print(f"[inseguito] la tastiera si muove: il video si ritaglia seguendola e la "
                       f"griglia resta appiccicata ai tasti (sopra {_SOGLIA_SEGUI_TASTI} tasti)")
@@ -4945,12 +5109,51 @@ def main():
             if not stabilizzato:
                 taglio = None                # il video e' il ritaglio base: il taglio non vale piu'
             if stabilizzato:
-                # `inseguito` puo' essere None (nessun inseguimento: `--insegui 0`, o il
-                # ritaglio allargato senza moto): il messaggio si adatta invece di rompersi.
-                quanto = (f" (la camera si muoveva di {inseguito['spostamento_tasti']} tasti: "
-                          f"col ritaglio fisso il pezzo perdeva i tasti)") if inseguito else ""
-                print(f"[video] {stabilizzato} fotogrammi con la tastiera ferma e raddrizzata"
-                      f"{quanto}, audio copiato dall'originale")
+                # Che cosa e' stato scritto DAVVERO (vedi `stabilizza_previsto` e, nel json,
+                # `ritaglio_video`): il ritaglio puo' essere quello INSEGUITO (`segue`: la camera si
+                # muove e `Ms` la segue) o quello FISSO del primo fotogramma, e il secondo caso ha
+                # tre cause diverse, che vanno distinte perche' non sono la stessa cosa per chi legge:
+                # la tastiera non si muove (lo dicono i 4 angoli, `tastiera_ferma`: il ritaglio del
+                # fotogramma 0 vale per tutto il pezzo), la tastiera si muove ma l'inseguimento non
+                # l'ha tenuta (`inseguito` non credibile: e' un RIPIEGO, e va detto), oppure nessuno
+                # ha chiesto di seguirla (`--insegui 0`). Prima questo messaggio diceva "tastiera
+                # ferma e raddrizzata" in tutti e tre i casi: chi leggeva il log credeva inseguita
+                # una tastiera che nessuno aveva seguito.
+                seg = inseguito or {}
+                if seg.get("segue"):
+                    quanto = (f" (la camera si muoveva di {seg['spostamento_tasti']} tasti"
+                              + (f" e i 4 angoli della zona dei tasti di {seg['moto_angoli_tasti']}"
+                                 if seg.get("moto_angoli_tasti") else "")
+                              + ": col ritaglio fisso il pezzo perdeva i tasti)")
+                    print(f"[video] {stabilizzato} fotogrammi con la tastiera ferma e raddrizzata"
+                          f"{quanto}, audio copiato dall'originale")
+                elif seg:
+                    # L'inseguimento c'e' stato e NON ha tenuto la tastiera: il ritaglio fermo e' un
+                    # ripiego, non una scelta. Qui gli angoli non dicono "si muove" (se lo dicessero
+                    # il pezzo sarebbe stato rifiutato piu' sopra), quindi il ripiego e' innocuo --
+                    # ma va detto lo stesso, e va detto che la tastiera non e' stata seguita.
+                    dove = (f" (l'inseguimento non l'ha tenuta: {seg['agganciati']} fotogrammi su "
+                            f"{seg['frame']} agganciati, {seg['spostamento_tasti']} tasti dichiarati)")
+                    print(f"[video] {stabilizzato} fotogrammi col ritaglio FISSO del primo fotogramma"
+                          f"{dove}: la tastiera NON e' stata seguita, audio copiato dall'originale")
+                elif (angoli or {}).get("decisa") == "ferma":
+                    # Nessun inseguimento, e non per pigrizia: gli angoli dei tasti sono stati
+                    # misurati e stanno fermi, quindi il ritaglio del fotogramma 0 vale per tutto il
+                    # pezzo. E' il caso piu' comune e il video e' quello giusto: dirlo con i numeri.
+                    print(f"[video] {stabilizzato} fotogrammi col ritaglio del primo fotogramma, che "
+                          f"qui vale per tutto il pezzo (i 4 angoli dei tasti si spostano di al "
+                          f"massimo {angoli['x_max_px']} px in x e {angoli['y_max_px']} px in y, "
+                          f"sotto le tolleranze di {angoli['tolleranza_x_px']:.0f}/"
+                          f"{angoli['tolleranza_y_px']:.0f} px): la tastiera non si muove, audio "
+                          f"copiato dall'originale")
+                else:
+                    # Nessun inseguimento e nessuna misura del movimento: il ritaglio fermo e' quello
+                    # che e' stato chiesto (`--insegui 0`). Va detto che il movimento non si e'
+                    # misurato, altrimenti "ritaglio del primo fotogramma" si legge come "tastiera
+                    # ferma" e non lo sappiamo.
+                    print(f"[video] {stabilizzato} fotogrammi col ritaglio FISSO del primo fotogramma "
+                          f"(l'inseguimento non e' stato chiesto e il movimento dei tasti non e' stato "
+                          f"misurato), audio copiato dall'originale")
         if not stabilizzato:
             scrivi_ffmpeg(video, mp4, rect, a.canonica, a.fps, a.inizio, a.durata)
         # QUEL CHE E' SALVATO, NON QUEL CHE SI SPERA: la finestra vera del video preparato -- con la
@@ -4967,7 +5170,10 @@ def main():
             # fotogramma, e le due dimensioni sono quelle del taglio.
             finestra = finestra_uscita or finestra
             larg_eff, alt_eff = taglio[2], taglio[3]
-        salva(ritaglio_video="stabilizzato" if stabilizzato else "fisso",
+        # "stabilizzato" solo se il ritaglio ha davvero SEGUITO la tastiera (`segue`): con
+        # l'inseguimento respinto `Ms` e' l'identita' e quello che si scrive e' il ritaglio fermo del
+        # primo fotogramma -- e la pagina lo chiamava "stabilizzato" lo stesso.
+        salva(ritaglio_video="stabilizzato" if (stabilizzato and (inseguito or {}).get("segue")) else "fisso",
               finestra_usata=list(finestra), larghezza_uscita=larg_eff, altezza_uscita=alt_eff)
         if not stabilizzato and rect_ext is not None:
             print(f"[!] la tastiera non e' stata raddrizzata: il video preparato e' il ritaglio base "

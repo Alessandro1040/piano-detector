@@ -412,13 +412,30 @@ function mostraEsito(d) {
        '; la tastiera si sposta di ' + n.inseguimento.spostamento_tasti + ' tasti' +
        (n.inseguimento.moto_angoli_tasti === undefined || n.inseguimento.moto_angoli_tasti === null
          ? '' : ' (i 4 angoli della zona: ' + n.inseguimento.moto_angoli_tasti + ')') +
+       (n.inseguimento.credibile === false
+         ? ' — NON credibile: la griglia inseguita non ha i tasti in mano e non si usa' : '') +
        (n.inseguimento.ferma
          ? ' — misurata ferma: si tiene la griglia del primo fotogramma per tutto il video' : ''))],
-    ['ritaglio del video', (n.inseguimento && n.inseguimento.segue === false) || a.decisa === 'ferma'
-      ? 'fermo: la camera non si muove, griglia e ritaglio del primo fotogramma per tutto il video' :
-      (n.ritaglio_video === 'stabilizzato' ?
-        'segue la tastiera (la camera si muoveva: la tastiera resta ferma e grande uguale)' :
-        (n.ritaglio_video ? 'fisso (la camera sta ferma)' : '—'))],
+    // IL RITAGLIO DEL VIDEO E IL MOVIMENTO DELLA TASTIERA SONO DUE COSE: il video esce col ritaglio
+    // del primo fotogramma sia quando la tastiera non si muove (misurato, `angoli_tasti`), sia quando
+    // l'inseguimento non l'ha tenuta (e allora e' un ripiego), sia quando nessuno ha chiesto di
+    // seguirla (`--insegui 0`: il movimento non e' stato misurato). Prima questa riga diceva "la
+    // camera sta ferma" in tutti e tre i casi, e sul pezzo rifiutato (che si muove: e' il motivo del
+    // rifiuto) diceva perfino che era fermo.
+    ['ritaglio del video',
+      ((n.verdetto || '').toLowerCase() === 'rifiuto' && !n.ritaglio_video)
+        ? 'non si scrive: il pezzo è stato rifiutato (il perché è qui sotto)'
+        : !n.ritaglio_video ? '—'
+        : n.ritaglio_video === 'stabilizzato'
+          ? 'segue la tastiera (la camera si muoveva: la tastiera resta ferma e grande uguale)'
+          : a.decisa === 'ferma'
+            ? 'fisso: il ritaglio del primo fotogramma, e i 4 angoli dei tasti dicono che la ' +
+              'tastiera non si muove, quindi vale per tutto il video'
+            : (n.inseguimento && n.inseguimento.segue === false
+              ? 'fisso: il ritaglio del primo fotogramma, ma l\'inseguimento non ha tenuto la ' +
+                'tastiera: è un ripiego, non una scelta'
+              : 'fisso: il ritaglio del primo fotogramma (il movimento dei tasti non è stato ' +
+                'misurato)')],
     ['ritaglio', n.ritaglio || '—'],
     ['rettangolo', n.rettangolo ? n.rettangolo.join(', ') : '—']
   ].map(x => '<span>' + x[0] + ': <b>' + x[1] + '</b></span>').join('') +
