@@ -1,0 +1,17 @@
+y=  90  scuri>=6px:  12  larghezze [19, 20, 21, 23, 26, 29, 61, 86, 112]  |  scuri<6px:   5
+y= 110  scuri>=6px:  22  larghezze [18, 19, 20, 21, 22, 23, 24, 26, 61, 64, 81]  |  scuri<6px:  12
+      posizioni: [100, 197, 234, 270, 327, 365, 422, 458, 495, 551, 588, 645, 682, 718, 775, 841, 870, 910, 948, 1005, 1044, 1104]
+      distanze fra inizi: [np.int64(97), np.int64(37), np.int64(36), np.int64(57), np.int64(38), np.int64(57), np.int64(36), np.int64(37), np.int64(56), np.int64(37), np.int64(57), np.int64(37), np.int64(36), np.int64(57), np.int64(66), np.int64(29), np.int64(40), np.int64(38), np.int64(57), np.int64(39), np.int64(60)]
+y= 130  scuri>=6px:   6  larghezze [82, 87, 215, 216, 217]  |  scuri<6px:   1
+y= 150  scuri>=6px:  21  larghezze [20, 21, 22, 26, 27, 28, 30, 34, 60, 73, 79]  |  scuri<6px:   8
+      posizioni: [100, 195, 232, 268, 325, 364, 421, 457, 494, 550, 588, 645, 683, 719, 777, 814, 861, 950, 1007, 1046, 1106]
+      distanze fra inizi: [np.int64(95), np.int64(37), np.int64(36), np.int64(57), np.int64(39), np.int64(57), np.int64(36), np.int64(37), np.int64(56), np.int64(38), np.int64(57), np.int64(38), np.int64(36), np.int64(58), np.int64(37), np.int64(47), np.int64(89), np.int64(57), np.int64(39), np.int64(60)]
+y= 170  scuri>=6px:  21  larghezze [20, 22, 23, 24, 25, 27, 28, 29, 38, 59, 67, 78]  |  scuri<6px:   8
+y= 190  scuri>=6px:  23  larghezze [8, 13, 18, 19, 20, 21, 22, 23, 24, 25, 29, 34, 58, 77]  |  scuri<6px:   8
+y= 210  scuri>=6px:  22  larghezze [10, 12, 15, 16, 17, 18, 20, 22, 23, 24, 25, 28, 29, 35, 57, 76]  |  scuri<6px:   7
+y= 230  scuri>=6px:  18  larghezze [6, 7, 12, 13, 14, 17, 19, 23, 24, 30, 35, 40, 56, 75]  |  scuri<6px:  14
+y= 250  scuri>=6px:  21  larghezze [6, 8, 13, 14, 15, 16, 18, 19, 25, 29, 31, 32, 53, 55]  |  scuri<6px:   7
+y= 270  scuri>=6px:   7  larghezze [11, 14, 15, 23, 41, 50, 54]  |  scuri<6px:  15
+y= 285  scuri>=6px:   6  larghezze [6, 23, 25, 48, 50, 54]  |  scuri<6px:  13
+y= 300  scuri>=6px:   6  larghezze [9, 21, 50, 52, 54]  |  scuri<6px:  16
+y= 310  scuri>=6px:   5  larghezze [18, 36, 50, 53, 54]  |  scuri<6px:  16

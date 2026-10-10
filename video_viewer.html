@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🎹 Piano Detector — Video frame by frame</title>
+<!-- icona inline: evita la richiesta (e il 404) di /favicon.ico -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%8E%B9%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c2330; --line:#2b3444;
+    --txt:#e6edf3; --dim:#8b98a9; --verde:#50c824; --azzurro:#1eaaff; --accent:#7c5cff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+       font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
+  header{padding:14px 18px;border-bottom:1px solid var(--line);background:var(--panel);
+         display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  header h1{font-size:16px;margin:0;font-weight:700}
+  header .sub{color:var(--dim);font-size:12.5px}
+  .wrap{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:14px;padding:14px}
+  @media (max-width:1080px){.wrap{grid-template-columns:minmax(0,1fr)}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+  .card h2{margin:0 0 10px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+  #stage{position:relative;background:#000;border-radius:10px;overflow:hidden;display:flex;
+         align-items:center;justify-content:center;min-height:220px}
+  #view{max-width:100%;max-height:66vh;display:block}
+  #drop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+        flex-direction:column;gap:8px;color:var(--dim);text-align:center;padding:20px}
+  #drop.dragover{background:#1b2a3a;color:var(--txt)}
+  button,select,input[type=text],input[type=number],input[type=file]{
+    font:inherit;color:var(--txt);background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:5px 9px}
+  button{cursor:pointer}
+  button:hover{border-color:#4a5a75}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.primary{background:var(--accent);border-color:var(--accent)}
+  input[type=range]{width:100%;accent-color:var(--verde)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row + .row{margin-top:8px}
+  .grow{flex:1;min-width:120px}
+  label.chk{display:flex;gap:6px;align-items:center;color:var(--dim);cursor:pointer}
+  input[type=checkbox]{accent-color:var(--verde)}
+  #slider{width:100%;margin:6px 0 2px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+  .dim{color:var(--dim)}
+  .legend{display:flex;gap:14px;font-size:12px;color:var(--dim);margin-top:6px;flex-wrap:wrap}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
+  #cropWrap{background:#0a0d12;border:1px solid var(--line);border-radius:8px;display:flex;
+            align-items:center;justify-content:center;min-height:90px;overflow:hidden}
+  #crop{max-width:100%;max-height:190px;display:block}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);font-size:12.5px}
+  th{color:var(--dim);font-weight:500}
+  tr.scelta td{color:var(--verde)}
+  #log{max-height:110px;overflow:auto;white-space:pre-wrap;font-size:11.5px;color:var(--dim)}
+  #progress{height:6px;background:var(--panel2);border-radius:4px;overflow:hidden;margin-top:8px}
+  #progress > div{height:100%;width:0;background:var(--verde);transition:width .15s}
+  .badge{position:absolute;top:10px;left:10px;background:#000000aa;border:1px solid var(--line);
+         border-radius:20px;padding:3px 10px;font-size:12px}
+  .kbd{border:1px solid var(--line);border-radius:5px;padding:0 4px;background:var(--panel2);
+       font-family:ui-monospace,monospace;font-size:11px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎹 Piano Detector — video frame by frame</h1>
+  <span class="sub">carica un video · scorri frame per frame · ogni frame mostra il riquadro del pianoforte rilevato</span>
+</header>
+
+<div class="wrap">
+  <!-- ---------------- colonna sinistra: video ---------------- -->
+  <div class="card">
+    <div class="row">
+      <input type="file" id="file" accept="video/*">
+      <button id="loadDemo" title="Usa il video di test incluso nel progetto">Video demo</button>
+      <span class="dim" id="fileName">nessun video caricato</span>
+    </div>
+
+    <div id="stage" style="margin-top:10px">
+      <canvas id="view" width="640" height="360"></canvas>
+      <div id="drop">
+        <div style="font-size:28px">🎹</div>
+        <div>Trascina qui un video (mp4, webm, mov…) oppure usa “Scegli file”</div>
+        <div class="dim" style="font-size:12px">tutto resta in locale: il video non viene caricato online</div>
+      </div>
+      <div class="badge" id="badge" style="display:none"></div>
+    </div>
+    <video id="video" playsinline muted style="display:none"></video>
+    <canvas id="grab" style="display:none"></canvas>
+
+    <div style="margin-top:10px">
+      <input type="range" id="slider" min="0" max="0" value="0" step="1" disabled>
+      <div class="row" style="justify-content:space-between">
+        <div class="row">
+          <button id="first" title="primo frame">⏮</button>
+          <button id="back10" title="-10 frame">⏪</button>
+          <button id="back" title="-1 frame">◀</button>
+          <button id="play" class="primary" title="play/pausa (spazio)">▶</button>
+          <button id="fwd" title="+1 frame">▶</button>
+          <button id="fwd10" title="+10 frame">⏩</button>
+          <button id="last" title="ultimo frame">⏭</button>
+        </div>
+        <div class="row">
+          <span class="mono" id="frameLbl">frame – / –</span>
+          <span class="mono dim" id="timeLbl">t = – s</span>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label class="dim">vai al frame</label>
+        <input type="number" id="goto" min="0" value="0" style="width:90px" disabled>
+        <button id="goBtn" disabled>ok</button>
+        <label class="dim" style="margin-left:8px">fps</label>
+        <input type="number" id="fps" min="1" step="0.001" value="30" style="width:90px">
+        <button id="fpsAuto" title="stima gli fps dal video (fa partire il video per un istante)">auto</button>
+        <span class="dim" id="fpsInfo"></span>
+      </div>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--verde)"></i>riquadro scelto (piano)</span>
+        <span><i class="dot" style="background:var(--azzurro)"></i>altre rilevazioni</span>
+        <span>scorciatoie: <span class="kbd">←</span> <span class="kbd">→</span> frame,
+          <span class="kbd">⇧</span>+<span class="kbd">←/→</span> ±10, <span class="kbd">spazio</span> play</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------------- colonna destra: controlli e risultati ---------------- -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <div class="card">
+      <h2>Rilevazione</h2>
+      <div class="row">
+        <select id="modello" class="grow"></select>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label class="dim" style="width:78px">confidenza</label>
+        <input type="range" id="conf" min="0.02" max="0.8" step="0.01" value="0.15">
+        <span class="mono" id="confLbl" style="width:34px">0.15</span>
+      </div>
+      <div class="row">
+        <label class="dim" style="width:78px">margine %</label>
+        <input type="range" id="margine" min="0" max="30" step="1" value="0">
+        <span class="mono" id="margineLbl" style="width:34px">0</span>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label class="chk"><input type="checkbox" id="mostraTutte" checked> mostra tutte</label>
+        <label class="chk"><input type="checkbox" id="riempi" checked> riempi regione</label>
+        <label class="chk"><input type="checkbox" id="boxScelto" checked> solo scelto</label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="analizza" class="primary" disabled>↻ Analizza frame</button>
+        <span class="mono dim" id="status">pronto</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Pianoforte rilevato (crop)</h2>
+      <div id="cropWrap"><canvas id="crop"></canvas></div>
+      <div class="row" style="margin-top:8px">
+        <button id="saveCrop" disabled>⬇ Salva crop PNG</button>
+        <span class="mono dim" id="cropInfo">–</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Dettagli frame <span class="mono dim" id="frameLbl2"></span></h2>
+      <table>
+        <thead><tr><th>classe</th><th>conf.</th><th>x1, y1</th><th>x2, y2</th><th>px</th></tr></thead>
+        <tbody id="boxes"><tr><td colspan="5" class="dim">–</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Analisi completa del video</h2>
+      <div class="dim" style="font-size:12.5px">
+        Rileva il pianoforte su tutti i frame (una sola volta, poi resta in cache):
+        dopo puoi scorrere il video e vedere i riquadri istantaneamente.
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="all" disabled>🔍 Pre-analizza tutti i frame</button>
+        <button id="stopAll" disabled>■ stop</button>
+        <span class="mono dim" id="allInfo"></span>
+      </div>
+      <div id="progress"><div></div></div>
+      <div class="row" style="margin-top:8px">
+        <button id="export" disabled>⬇ Esporta JSON</button>
+        <button id="clear" disabled>🗑 Svuota cache</button>
+        <span class="mono dim" id="cacheInfo"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Log</h2>
+      <div id="log" class="mono"></div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+/* =========================================================================
+   Piano Detector — viewer video frame by frame
+   Il frame mostrato viene copiato nel canvas #grab e mandato a POST /detect:
+   il server risponde con le coordinate, che qui diventano riquadri
+   (verde = riquadro scelto, azzurro = altre rilevazioni).
+   ========================================================================= */
+
+const video = document.getElementById('video');
+const view  = document.getElementById('view');
+const vctx  = view.getContext('2d');
+const grab  = document.getElementById('grab');
+const gctx  = grab.getContext('2d');
+const crop  = document.getElementById('crop');
+const cctx  = crop.getContext('2d');
+
+const el = id => document.getElementById(id);
+const logBox = el('log');
+function log(msg){
+  logBox.textContent += `[${new Date().toLocaleTimeString('it-IT')}] ${msg}\n`;
+  logBox.scrollTop = logBox.scrollHeight;
+}
+
+const VERDE = '#50c824', AZZURRO = '#1eaaff';
+let fps = 30, totalFrames = 0, currentFrame = 0;
+let cache = new Map();          // frame -> risposta del server (coordinate)
+let inflight = new Set();       // frame attualmente in richiesta
+let cfgKey = '';                // modello|confidenza: se cambia la cache non è valida
+let seekWaiters = [];
+let seekFallbackNotice = false;     // avvisa una sola volta se il seek non è segnalato
+let detecting = 0, msSamples = [];
+let preanalyzing = false;
+let fpsSamples = [], prevMediaTime = null, fpsAutoDone = false;
+let videoDuration = 0;             // durata effettiva (a volte il file non la dichiara)
+let maxMediaTime = 0, scanning = false;
+
+const median = a => { const s = [...a].sort((x,y) => x-y); return s[Math.floor(s.length/2)]; };
+const clampFrame = i => Math.max(0, Math.min(Math.max(0, totalFrames-1), i));
+
+/* ------------------------------- fps ----------------------------------- */
+function measureFps(mediaTime){
+  if(!el('fpsInfo').dataset.auto) return;
+  if(prevMediaTime !== null){
+    const d = mediaTime - prevMediaTime;
+    if(d > 0.002 && d < 0.5) fpsSamples.push(d);
+  }
+  prevMediaTime = mediaTime;
+  if(fpsSamples.length >= 20){
+    const f = 1 / median(fpsSamples);
+    if(isFinite(f) && f > 1 && f < 240){
+      fps = Math.round(f * 1000) / 1000;
+      el('fps').value = fps;
+      totalFrames = Math.max(1, Math.round(videoDuration * fps));
+      el('slider').max = totalFrames - 1;
+      el('goto').max = totalFrames - 1;
+      el('fpsInfo').textContent = `stimati ${fps} fps`;
+      log(`fps stimati dal video: ${fps}`);
+    }
+    fpsSamples = [];
+    if(fpsAutoDone) el('fpsInfo').dataset.auto = '';
+  }
+}
+
+/* ---------------------------- caricamento ------------------------------- */
+function loadFile(file){
+  if(!file) return;
+  video.src = URL.createObjectURL(file);
+  el('fileName').textContent = `${file.name} (${(file.size/1048576).toFixed(1)} MB)`;
+  el('drop').style.display = 'none';
+  cache.clear(); inflight.clear();
+  el('progress').firstElementChild.style.width = '0%';
+  log(`caricato ${file.name}`);
+  video.load();
+}
+
+el('file').addEventListener('change', e => loadFile(e.target.files[0]));
+el('loadDemo').addEventListener('click', async () => {
+  const r = await fetch('/video-demo');
+  if(!r.ok){ log('⚠️ nessun video demo nel progetto: carica un file'); return; }
+  const b = await r.blob();
+  // nome e tipo reali del file servito (il demo può essere .mp4 o .webm)
+  const tipo = b.type || r.headers.get('Content-Type') || 'video/mp4';
+  const cd = r.headers.get('Content-Disposition') || '';
+  const nome = /filename="?([^";]+)"?/.exec(cd)?.[1]
+            || `video_demo.${tipo.includes('webm') ? 'webm' : tipo.includes('mp4') ? 'mp4' : 'mov'}`;
+  loadFile(new File([b], nome, {type: tipo}));
+});
+
+const stage = el('stage');
+['dragenter','dragover'].forEach(ev => stage.addEventListener(ev, e => {
+  e.preventDefault(); stage.classList.add('dragover');
+}));
+['dragleave','drop'].forEach(ev => stage.addEventListener(ev, e => {
+  e.preventDefault(); stage.classList.remove('dragover');
+}));
+stage.addEventListener('drop', e => {
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if(f) loadFile(f);
+});
+
+video.addEventListener('loadedmetadata', async () => {
+  videoDuration = await resolveDuration();
+  view.width = grab.width = video.videoWidth;
+  view.height = grab.height = video.videoHeight;
+  totalFrames = Math.max(1, Math.round(videoDuration * fps));
+  el('slider').max = totalFrames - 1; el('goto').max = totalFrames - 1;
+  ['slider','goto','goBtn','analizza','all','export','clear'].forEach(id => el(id).disabled = false);
+  el('fpsInfo').dataset.auto = '1';        // stima gli fps al primo play
+  log(`video ${video.videoWidth}×${video.videoHeight}, durata ${videoDuration.toFixed(2)} s ` +
+      `→ ~${totalFrames} frame @ ${fps} fps`);
+  goToFrame(0, true);
+});
+
+/* Alcuni webm/registrazioni schermo non dichiarano la durata: la ricaviamo
+   forzando il seek oltre la fine oppure, se serve, riproducendo il video
+   velocemente una volta sola e prendendo l'ultimo frame presentato. */
+async function resolveDuration(){
+  if(isFinite(video.duration) && video.duration > 0) return video.duration;
+  log('durata non dichiarata dal file: provo a ricavarla…');
+  try{
+    video.currentTime = 1e10;
+    await new Promise(res => {
+      const fine = () => { video.removeEventListener('durationchange', fine); res(); };
+      video.addEventListener('durationchange', fine);
+      setTimeout(fine, 1500);
+    });
+    video.currentTime = 0;
+    if(isFinite(video.duration) && video.duration > 0) return video.duration;
+  }catch(e){ /* ignora e passa al piano B */ }
+
+  scanning = true;                      // piano B: misura riproducendo velocemente
+  const oldRate = video.playbackRate;
+  video.playbackRate = 4;
+  maxMediaTime = 0;
+  await new Promise(res => {
+    const fine = () => { video.removeEventListener('ended', fine); res(); };
+    video.addEventListener('ended', fine);
+    video.play().catch(fine);
+    setTimeout(fine, 20000);
+  });
+  video.pause(); video.playbackRate = oldRate; video.currentTime = 0;
+  scanning = false;
+  const d = (isFinite(video.duration) && video.duration > 0) ? video.duration : maxMediaTime + 1/fps;
+  log(`durata misurata: ${d.toFixed(2)} s`);
+  return d;
+}
+
+video.addEventListener('error', () => log('⚠️ il browser non riesce a leggere questo video (codec non supportato)'));
+
+/* --------------------- frame presentati dal video ----------------------- */
+/* requestVideoFrameCallback avvisa quando un nuovo frame è pronto (durante il
+   play e dopo ogni seek); se il browser non lo supporta usiamo un fallback. */
+function startFrameLoop(){
+  if(!video.requestVideoFrameCallback){
+    const fallback = () => {
+      if(!video.paused) onPresented(video.currentTime);
+      requestAnimationFrame(fallback);
+    };
+    requestAnimationFrame(fallback);
+    video.addEventListener('seeked', () => onPresented(video.currentTime));
+    return;
+  }
+  const step = (now, meta) => { onPresented(meta.mediaTime); video.requestVideoFrameCallback(step); };
+  video.requestVideoFrameCallback(step);
+}
+
+/* copia il frame mostrato dal video nel canvas #grab (da cui poi si fa il JPEG).
+   Ritorna false se il video non ha ancora un frame utilizzabile. */
+function grabFrame(){
+  if(!video.videoWidth || !video.videoHeight) return false;
+  if(grab.width !== video.videoWidth || grab.height !== video.videoHeight){
+    grab.width = video.videoWidth; grab.height = video.videoHeight;
+  }
+  gctx.drawImage(video, 0, 0, grab.width, grab.height);
+  return true;
+}
+
+function frameLabels(i, mediaTime){
+  el('slider').value = i;
+  el('frameLbl').textContent = `frame ${i} / ${Math.max(0, totalFrames-1)}`;
+  el('frameLbl2').textContent = `#${i}`;
+  el('timeLbl').textContent = `t = ${mediaTime.toFixed(3)} s`;
+}
+
+function onPresented(mediaTime){
+  measureFps(mediaTime);
+  if(mediaTime > maxMediaTime) maxMediaTime = mediaTime;
+  // goToFrame cerca a metà frame ((i+0.5)/fps): floor riporta al frame giusto
+  const i = clampFrame(Math.floor(mediaTime * fps + 1e-4));
+  currentFrame = i;
+  frameLabels(i, mediaTime);
+
+  grabFrame();                                            // cattura il frame mostrato
+  render();
+
+  const ws = seekWaiters; seekWaiters = [];
+  ws.forEach(r => r(i));
+
+  if(!scanning) requestDetection(i);
+}
+
+/* --------------------------- disegno canvas ----------------------------- */
+const scaleFor = w => Math.max(1, w / 960);   // adatta spessori/font alla risoluzione
+
+function expand(b){                            // margine % attorno al riquadro
+  const m = Number(el('margine').value) / 100;
+  if(!m) return b;
+  const dx = (b.x2-b.x1) * m, dy = (b.y2-b.y1) * m;
+  return {...b,
+    x1: Math.max(0, b.x1-dx), y1: Math.max(0, b.y1-dy),
+    x2: Math.min(grab.width, b.x2+dx), y2: Math.min(grab.height, b.y2+dy)};
+}
+
+function render(){
+  vctx.drawImage(video, 0, 0, view.width, view.height);
+  let scelto = null;
+  const d = cache.get(currentFrame);
+
+  if(d && d.boxes.length){
+    const s = scaleFor(view.width);
+    let boxes = el('boxScelto').checked && d.scelto ? [d.scelto]
+              : (el('mostraTutte').checked ? d.boxes : d.boxes.filter(b => b.scelto));
+
+    if(el('riempi').checked && d.scelto){      // regione colorata (sotto i bordi)
+      const b = expand(d.scelto);
+      vctx.fillStyle = 'rgba(80,200,36,.22)';
+      vctx.fillRect(b.x1, b.y1, b.x2-b.x1, b.y2-b.y1);
+    }
+    for(const b0 of boxes){
+      const b = b0.scelto ? expand(b0) : b0;
+      vctx.lineWidth = (b0.scelto ? 3 : 1.5) * s;
+      vctx.strokeStyle = b0.scelto ? VERDE : AZZURRO;
+      vctx.setLineDash(b0.scelto ? [] : [8*s, 6*s]);
+      vctx.strokeRect(b.x1, b.y1, b.x2-b.x1, b.y2-b.y1);
+      vctx.setLineDash([]);
+      const label = `${b0.classe} ${b0.confidenza.toFixed(2)}`;
+      vctx.font = `600 ${Math.round(15*s)}px -apple-system,Segoe UI,Roboto,sans-serif`;
+      const tw = vctx.measureText(label).width, h = Math.round(20*s);
+      vctx.fillStyle = b0.scelto ? VERDE : AZZURRO;
+      vctx.fillRect(b.x1, Math.max(0, b.y1 - h), tw + 10*s, h);
+      vctx.fillStyle = '#06110a';
+      vctx.fillText(label, b.x1 + 5*s, Math.max(h - 6*s, b.y1 - 5*s));
+    }
+  }
+  scelto = d && d.scelto ? d.scelto : null;
+
+  el('badge').style.display = 'block';
+  el('badge').textContent = d
+    ? (d.boxes.length
+        ? `${d.boxes.length} rilevazioni in ${d.ms.toFixed(0)} ms` + (d.scelto ? ` · scelto: ${d.scelto.classe} ${d.scelto.confidenza.toFixed(2)}` : '')
+        : 'nessun pianoforte in questo frame')
+    : (inflight.size ? '⏳ rilevamento…' : '—');
+
+  drawCrop(scelto);
+  fillTable(d);
+  updateStatus();
+}
+
+function drawCrop(b){
+  if(!b){
+    crop.width = crop.height = 1;
+    cctx.clearRect(0, 0, 1, 1);
+    el('cropInfo').textContent = '–';
+    el('saveCrop').disabled = true;
+    return;
+  }
+  const x = Math.round(b.x1), y = Math.round(b.y1);
+  const w = Math.max(1, Math.round(b.x2 - b.x1)), h = Math.max(1, Math.round(b.y2 - b.y1));
+  crop.width = w; crop.height = h;
+  cctx.drawImage(grab, x, y, w, h, 0, 0, w, h);
+  el('cropInfo').textContent = `${w}×${h} px @ (${x}, ${y})`;
+  el('saveCrop').disabled = false;
+}
+
+function fillTable(d){
+  const tb = el('boxes');
+  if(!d || !d.boxes.length){
+    tb.innerHTML = '<tr><td colspan="5" class="dim">–</td></tr>';
+    return;
+  }
+  tb.innerHTML = d.boxes.map(b => `<tr class="${b.scelto ? 'scelta' : ''}">
+      <td>${b.classe}${b.scelto ? ' ⬅' : ''}</td><td>${b.confidenza.toFixed(3)}</td>
+      <td>${b.x1}, ${b.y1}</td><td>${b.x2}, ${b.y2}</td>
+      <td>${b.x2-b.x1}×${b.y2-b.y1}</td></tr>`).join('');
+}
+
+/* ------------------------------ detection ------------------------------- */
+const signature = () => `${el('modello').value}|${el('conf').value}`;
+
+function requestDetection(i){
+  if(!video.videoWidth) return;
+  if(cache.has(i) || inflight.has(i)) return;
+  if(inflight.size >= 2) return;          // non intasare il server
+  inflight.add(i); detecting++;
+  updateStatus();
+
+  const key = signature();
+  grab.toBlob(blob => {
+    const fd = new FormData();
+    fd.append('frame', blob, 'frame.jpg');
+    fd.append('conf', el('conf').value);
+    fd.append('modello', el('modello').value);
+    fd.append('margine', 0);              // il margine si applica qui lato client
+    fetch('/detect', {method: 'POST', body: fd})
+      .then(r => r.json())
+      .then(d => {
+        inflight.delete(i); detecting--;
+        if(key !== signature()){ updateStatus(); return; }   // impostazioni cambiate: scarta
+        if(d.errore){ log('⚠️ ' + d.errore); updateStatus(); return; }
+        cache.set(i, d);
+        msSamples.push(d.ms);
+        if(msSamples.length > 40) msSamples.shift();
+        if(i === currentFrame) render();
+        updateStatus();
+      })
+      .catch(e => { inflight.delete(i); detecting--; log('errore richiesta: ' + e); updateStatus(); });
+  }, 'image/jpeg', 0.9);
+}
+
+function updateStatus(){
+  const avg = msSamples.length ? median(msSamples) : 0;
+  el('status').textContent = `${cache.size} frame in cache · ${detecting} in corso` +
+                             (avg ? ` · ${avg.toFixed(0)} ms/frame` : '');
+  el('cacheInfo').textContent = `${cache.size}/${totalFrames} frame analizzati`;
+}
+
+/* ------------------------------- seek ----------------------------------- */
+function frameToTime(i){ return Math.min(Math.max(0, videoDuration - 1e-3), (i + 0.5) / fps); }
+
+function goToFrame(i, force){
+  i = clampFrame(i);
+  if(i === currentFrame && !force){ render(); return Promise.resolve(i); }
+  if(!video.paused) video.pause();
+  return new Promise(res => {
+    const done = () => {
+      if(!seekWaiters.includes(res)) return;
+      seekWaiters = seekWaiters.filter(r => r !== res);
+      currentFrame = i;
+      frameLabels(i, video.currentTime);
+      const pronto = grabFrame();
+      render();
+      if(pronto) requestDetection(i);      // rileva anche se il frame non è stato "notificato"
+      res(i);
+    };
+    seekWaiters.push(res);
+    video.currentTime = frameToTime(i);
+    setTimeout(() => {                     // sicurezza: se il browser non notifica il frame
+      if(seekWaiters.includes(res) && !seekFallbackNotice){
+        seekFallbackNotice = true;
+        log('nota: il browser non segnala i frame dopo il seek → uso il fallback');
+      }
+      done();
+    }, 900);
+  });
+}
+
+el('slider').addEventListener('input', e => goToFrame(Number(e.target.value)));
+el('first').onclick  = () => goToFrame(0);
+el('last').onclick   = () => goToFrame(totalFrames - 1);
+el('back').onclick   = () => goToFrame(currentFrame - 1);
+el('fwd').onclick    = () => goToFrame(currentFrame + 1);
+el('back10').onclick = () => goToFrame(currentFrame - 10);
+el('fwd10').onclick  = () => goToFrame(currentFrame + 10);
+el('goBtn').onclick  = () => goToFrame(Number(el('goto').value));
+el('play').onclick   = () => video.paused ? video.play() : video.pause();
+video.addEventListener('play', () => el('play').textContent = '⏸');
+video.addEventListener('pause', () => el('play').textContent = '▶');
+
+document.addEventListener('keydown', e => {
+  if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
+  const big = e.shiftKey ? 10 : 1;
+  if(e.key === 'ArrowLeft'){ e.preventDefault(); goToFrame(currentFrame - big); }
+  else if(e.key === 'ArrowRight'){ e.preventDefault(); goToFrame(currentFrame + big); }
+  else if(e.key === ' '){ e.preventDefault(); video.paused ? video.play() : video.pause(); }
+});
+
+/* ---------------------------- impostazioni ------------------------------ */
+function resetCache(motivo){
+  cache.clear(); inflight.clear(); cfgKey = signature();
+  log(`${motivo}: cache svuotata`);
+  render(); requestDetection(currentFrame);
+}
+
+el('conf').addEventListener('input', () => {
+  el('confLbl').textContent = el('conf').value;
+  if(signature() !== cfgKey) resetCache('confidenza cambiata');
+});
+el('modello').addEventListener('change', () => resetCache('modello cambiato'));
+el('margine').addEventListener('input', () => { el('margineLbl').textContent = el('margine').value; render(); });
+['mostraTutte','riempi','boxScelto'].forEach(id => el(id).addEventListener('change', render));
+el('analizza').onclick = () => {
+  cache.delete(currentFrame); inflight.delete(currentFrame);
+  log(`ri-analisi del frame ${currentFrame}`);
+  render(); requestDetection(currentFrame);
+};
+el('clear').onclick = () => { cache.clear(); inflight.clear(); log('cache svuotata'); render(); };
+
+el('fps').addEventListener('change', () => {
+  fps = Math.max(1, Number(el('fps').value) || 30);
+  el('fpsInfo').dataset.auto = '';
+  totalFrames = Math.max(1, Math.round(videoDuration * fps));
+  el('slider').max = totalFrames - 1; el('goto').max = totalFrames - 1;
+  cache.clear(); inflight.clear();
+  log(`fps impostati a ${fps}: cache svuotata`);
+  goToFrame(currentFrame, true);
+});
+el('fpsAuto').onclick = () => {
+  fpsSamples = []; prevMediaTime = null; fpsAutoDone = false;
+  el('fpsInfo').dataset.auto = '1';
+  log('stima fps: avvio il video per ~1 s…');
+  video.play();
+  setTimeout(() => { fpsAutoDone = true; video.pause(); }, 1200);
+};
+
+/* --------------------------- salva / esporta ---------------------------- */
+el('saveCrop').onclick = () => {
+  crop.toBlob(b => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = `piano_frame_${currentFrame}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    log(`salvato crop del frame ${currentFrame}`);
+  });
+};
+
+el('export').onclick = () => {
+  const out = {
+    video: el('fileName').textContent,
+    fps, totale_frame: totalFrames,
+    impostazioni: {modello: el('modello').value, confidenza: Number(el('conf').value),
+                   margine_percento: Number(el('margine').value)},
+    frame: {},
+  };
+  [...cache.keys()].sort((a,b) => a - b).forEach(i => { out.frame[i] = cache.get(i); });
+  const blob = new Blob([JSON.stringify(out, null, 2)], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'piano_detections.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  log(`esportati ${cache.size} frame in JSON`);
+};
+
+/* --------------------- analisi di tutto il video ------------------------ */
+el('stopAll').onclick = () => { preanalyzing = false; log('stop richiesto…'); };
+
+el('all').onclick = async () => {
+  if(preanalyzing) return;
+  preanalyzing = true;
+  el('all').disabled = true; el('stopAll').disabled = false;
+  if(!video.paused) video.pause();
+  const t0 = performance.now();
+  let done = 0;
+  try{
+    for(let i = 0; i < totalFrames; i++){
+      if(!preanalyzing) break;
+      if(!cache.has(i) && !inflight.has(i)){
+        el('allInfo').textContent = `frame ${i}/${Math.max(0, totalFrames-1)}`;
+        await goToFrame(i, true);
+        requestDetection(i);
+        while(inflight.has(i) && preanalyzing) await new Promise(r => setTimeout(r, 40));
+      }
+      done++;
+      el('progress').firstElementChild.style.width = `${(done / totalFrames * 100).toFixed(1)}%`;
+      if(i % 20 === 0) await new Promise(r => setTimeout(r, 0));   // respiro per la UI
+    }
+  } finally {
+    preanalyzing = false;
+    el('all').disabled = false; el('stopAll').disabled = true;
+    el('allInfo').textContent =
+      `${done}/${totalFrames} frame in ${((performance.now() - t0) / 1000).toFixed(1)} s`;
+    render(); updateStatus();
+    log(`pre-analisi terminata: ${done}/${totalFrames} frame, ${cache.size} in cache`);
+  }
+};
+
+/* -------------------------------- avvio --------------------------------- */
+fetch('/modelli').then(r => r.json()).then(lista => {
+  el('modello').innerHTML = lista.map(m =>
+    `<option value="${m.nome}"${m.presente ? '' : ' disabled'}>` +
+    `${m.nome}${m.presente ? '' : ' (pesi assenti)'}</option>`).join('');
+  const veloce = lista.find(m => m.presente && m.nome.includes('veloce'));
+  if(veloce) el('modello').value = veloce.nome;
+  cfgKey = signature();
+  log('modelli disponibili: ' + lista.filter(m => m.presente).map(m => m.nome).join(', '));
+}).catch(() => log('⚠️ server non raggiungibile: avvia `python video_app.py`'));
+
+startFrameLoop();
+log('pronto: carica un video (o trascinalo nella finestra)');
+
+/* parametri comodi: ?demo=1 carica il video di prova, &frame=N va al frame N */
+const params = new URLSearchParams(location.search);
+if(params.get('demo') === '1'){
+  el('loadDemo').click();
+  const f = Number(params.get('frame'));
+  if(Number.isFinite(f) && f > 0){
+    const attesa = setInterval(() => {
+      if(totalFrames > 1 && video.videoWidth){ clearInterval(attesa); goToFrame(f, true); }
+    }, 100);
+    setTimeout(() => clearInterval(attesa), 15000);
+  }
+}
+</script>
+</body>
+</html>
+

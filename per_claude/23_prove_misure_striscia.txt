@@ -1,0 +1,38 @@
+frazione di pixel scuri per riga della striscia (righe 0..219):
+  striscia y   0- 10: scuro 0.62  profilo min=0 max=18
+  striscia y  10- 20: scuro 0.50  profilo min=0 max=37
+  striscia y  20- 30: scuro 0.95  profilo min=0 max=153
+  striscia y  30- 40: scuro 0.94  profilo min=0 max=130
+  striscia y  40- 50: scuro 0.53  profilo min=0 max=68
+  striscia y  50- 60: scuro 0.58  profilo min=0 max=105
+  striscia y  60- 70: scuro 0.58  profilo min=0 max=154
+  striscia y  70- 80: scuro 0.57  profilo min=1 max=185
+  striscia y  80- 90: scuro 0.55  profilo min=0 max=208
+  striscia y  90-100: scuro 0.52  profilo min=1 max=224
+  striscia y 100-110: scuro 0.53  profilo min=1 max=232
+  striscia y 110-120: scuro 0.46  profilo min=1 max=242
+  striscia y 120-130: scuro 0.40  profilo min=1 max=249
+  striscia y 130-140: scuro 0.36  profilo min=1 max=251
+  striscia y 140-150: scuro 0.43  profilo min=1 max=252
+  striscia y 150-160: scuro 0.20  profilo min=17 max=253
+  striscia y 160-170: scuro 0.17  profilo min=23 max=253
+  striscia y 170-180: scuro 0.16  profilo min=24 max=253
+  striscia y 180-190: scuro 0.16  profilo min=33 max=253
+  striscia y 190-200: scuro 0.14  profilo min=10 max=254
+  striscia y 200-210: scuro 0.14  profilo min=6 max=254
+  striscia y 210-220: scuro 0.17  profilo min=12 max=250
+
+NERI, striscia y (35, 75): 14 run, larghezze [20, 21, 22, 23, 24, 25], centri [53.5, 90.5, 127.0, 184.0, 222.5, 280.0, 354.0, 409.5, 448.0, 504.5, 542.5, 577.0, 808.0, 965.0]
+  distanze fra centri: [np.float64(37.0), np.float64(36.5), np.float64(57.0), np.float64(38.5), np.float64(57.5), np.float64(74.0), np.float64(55.5), np.float64(38.5), np.float64(56.5), np.float64(38.0), np.float64(34.5), np.float64(231.0), np.float64(157.0)]
+  passo corto (1.15w) mediano = 37.50 -> w_neri = 32.61;  ottava = 228.3
+BIANCHI, striscia y (150, 175): 14 separazioni sottili, passo mediano = 33.00 -> w_front = 33.00, 14 sep; prime posizioni [52.0, 151.0, 183.0, 215.0, 244.0, 441.5, 474.5, 507.5]
+BIANCHI, striscia y (175, 200): 16 separazioni sottili, passo mediano = 33.00 -> w_front = 33.00, 16 sep; prime posizioni [18.5, 51.0, 84.0, 117.0, 149.5, 182.0, 214.0, 441.5]
+BIANCHI, striscia y (200, 215): 16 separazioni sottili, passo mediano = 33.00 -> w_front = 33.00, 16 sep; prime posizioni [18.0, 50.5, 83.0, 149.0, 181.0, 214.0, 441.0, 474.0]
+
+scritta /tmp/ref_striscia_quad_utente.png
+fit fascia frontale: w = 32.50 px, x0 = 19.00 px, scurezza media = 0.463
+confini da x0=19.0 ogni 32.50: 30 tasti bianchi nella striscia (976 px)
+scritta /tmp/ref_strip_griglia_corretta.png ( (220, 976, 3) )
+
+verifica con i NERI: per ogni nero misurato, il confine piu' vicino e la classe
+(i neri sono letti in una banda 1% piu' stretta: w_neri ~ 32.4)

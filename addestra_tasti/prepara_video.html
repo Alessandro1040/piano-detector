@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="it"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Passo 0 — prepara il video</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#666;--card:#f1f1f1;--card2:#e7e7e7;--line:#cfcfcf;
+      --acc:#0b6bcb;--acc2:#0a8f5b;--warn:#a05a00;--err:#b3261e;box-sizing:border-box}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#15171a;--fg:#eee;--mut:#9aa;
+      --card:#23262b;--card2:#2b2f35;--line:#3b4046;--acc:#5aa9ff;--acc2:#4bd08a;--warn:#e0a450;
+      --err:#ff8a80}}
+*{box-sizing:inherit}
+body{margin:0 auto;padding:16px;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif;
+     max-width:1180px}
+h2{margin:0 0 6px}h3{margin:18px 0 8px;font-size:15px}
+p.spiega{color:var(--mut);font-size:12.5px;line-height:1.7;margin:0 0 14px}
+.carte{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:860px){.carte{grid-template-columns:1fr}}
+.card{background:var(--card);border-radius:10px;padding:12px}
+.card.sel{outline:2px solid var(--acc)}
+label.riga{display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0;flex-wrap:wrap}
+input[type=number],input[type=text]{background:var(--bg);color:var(--fg);border:1px solid var(--line);
+     border-radius:6px;padding:6px 8px;font:inherit}
+input[type=number]{width:80px}
+button{background:var(--card2);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+     padding:8px 12px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--acc)}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+button.ok{background:var(--acc2);border-color:var(--acc2);color:#fff}
+button.sm{padding:4px 8px;font-size:12px}
+button:disabled{opacity:.5;cursor:default}
+#elenco{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:8px}
+#elenco .e{display:flex;gap:8px;align-items:baseline;padding:5px 8px;border-bottom:1px solid var(--line);
+     font-size:12.5px;cursor:pointer}
+#elenco .e:hover{background:var(--card2)}
+#elenco .e.sel{background:var(--card2);outline:1px solid var(--acc)}
+#elenco .n{color:var(--mut);min-width:26px;text-align:right}
+#elenco .br{color:var(--mut)}
+.tag{font-size:11px;padding:1px 6px;border-radius:20px;border:1px solid var(--line);color:var(--mut);
+     white-space:nowrap}
+.tag.fatto{border-color:var(--acc2);color:var(--acc2)}
+.tag.usa{border-color:var(--acc);color:var(--acc)}
+.logbox{background:#0f1216;color:#cfd6dd;font:12px ui-monospace,Menlo,monospace;border-radius:8px;
+     padding:10px;max-height:220px;overflow:auto;white-space:pre-wrap;margin-top:10px}
+.logbox:empty::before{content:'—';color:#666}
+.barra{height:7px;background:var(--card2);border-radius:5px;overflow:hidden;margin:8px 0}
+.barra>div{height:100%;width:0;background:linear-gradient(90deg,var(--acc),var(--acc2));transition:width .3s}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12.5px;font-weight:600}
+.badge.ok{background:var(--acc2);color:#fff}.badge.incerto{background:var(--warn);color:#fff}
+.badge.rifiuto,.badge.errore{background:var(--err);color:#fff}
+.numeri{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;font-size:12.5px;color:var(--mut)}
+.numeri b{color:var(--fg)}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:860px){.duo{grid-template-columns:1fr}}
+.duo video{width:100%;border-radius:8px;background:#000;display:block}
+.duo figcaption{font-size:12px;color:var(--mut);margin-bottom:4px}
+img.controllo{width:100%;border-radius:8px;border:1px solid var(--line);margin-top:10px}
+video.cgr{width:100%;border-radius:8px;background:#000;display:block;border:1px solid var(--line);
+     margin-top:10px}
+.azioni{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.errore{color:var(--err);font-size:12.5px;margin-top:8px;min-height:1em}
+.pill{font-size:12px;color:var(--mut)}
+a{color:var(--acc)}
+</style></head><body>
+
+<h2>🎬 Passo 0 — prepara il video (solo tastiera)</h2>
+<p class="spiega">
+  La griglia dei tasti si cerca <b>per periodicità</b>: in una ripresa larga il motore si aggancia
+  alla fascia sbagliata (misurato: passo 29,9 px con 29 inlier invece di 33,2 px con 231) e poi
+  addestra su tasti inventati. Qui il video viene <b>ritagliato sulla tastiera</b> e la griglia
+  trovata si controlla a occhio: se non convince, non entra nell'addestramento.
+  Se la ripresa è <b>a mano libera</b> — la tastiera si sposta, la prospettiva cambia — la griglia
+  viene <b>inseguita fotogramma per fotogramma</b> col tracker del motore e il ritaglio la segue:
+  nel controllo i riquadri restano appiccicati ai tasti per tutto il pezzo, non solo sul primo
+  fotogramma, e il video preparato tiene la tastiera ferma al suo posto. Su una ripresa ferma il
+  ritaglio resta quello di sempre e il video esce identico a prima.
+  Il tempo non si tocca (stessi frame, stessi fps, stesso audio), quindi il MIDI resta allineato
+  com'era.
+</p>
+
+<h3>1) Da dove prendo il video?</h3>
+<div class="carte">
+  <div class="card sel" id="cardEsempio">
+    <label class="riga"><input type="checkbox" id="ckEsempio" checked>
+      <b>Un esempio dal dataset PianoVAM</b> <span class="pill">(video + MIDI vero del pianoforte)</span></label>
+    <label class="riga">Esempio n. <input type="number" id="numero" min="1" max="107" value="4">
+      <button class="sm" id="caso" type="button">🎲 uno a caso</button>
+      <span class="pill" id="scelto"></span></label>
+    <div id="elenco"></div>
+    <div class="pill" id="statoEsempi" style="margin-top:6px"></div>
+  </div>
+  <div class="card" id="cardFile">
+    <label class="riga"><input type="checkbox" id="ckFile">
+      <b>Un video dal mio computer</b> <span class="pill">(col MIDI vero della stessa esecuzione)</span></label>
+    <label class="riga">Video <input type="file" id="fileVideo" accept="video/*,.mkv,.mov,.mp4"></label>
+    <label class="riga">MIDI <input type="file" id="fileMidi" accept=".mid,.midi"></label>
+    <p class="pill" style="margin:6px 0 0">I due file devono avere lo <b>stesso nome</b>
+      (<code>brano1.mp4</code> + <code>brano1.mid</code>): è la stessa coppia che chiede
+      l'addestramento. Il MIDI deve essere quello vero di <i>quella</i> esecuzione, non le
+      previsioni di un motore di trascrizione.</p>
+  </div>
+</div>
+
+<h3>2) Quanto pezzo prendere</h3>
+<label class="riga">Durata <input type="number" id="durata" min="5" max="600" value="60"> secondi
+  &nbsp;da&nbsp; <input type="number" id="inizio" min="0" value="0"> secondi
+  <span class="pill">(con «a caso» l'inizio lo sceglie lui, dentro la registrazione)</span></label>
+
+<div class="azioni">
+  <button class="primary" id="avvia" type="button">▶︎ Prepara (passo 0)</button>
+  <button class="sm" id="aggiorna" type="button">↻ rileggi l'elenco</button>
+  <span class="pill" id="spazio"></span>
+</div>
+<label class="riga"><input type="checkbox" id="forza">
+  <b>procedi lo stesso</b> <span class="pill">se il MIDI manca o i nomi non combaciano: preparo il
+  video e cerco la griglia lo stesso, così almeno la vedi (senza il MIDI vero di quella esecuzione
+  non si addestra; se il MIDI ce l'hai con un altro nome, rinominalo come il video)</span></label>
+<div class="barra" id="barra" style="display:none"><div id="barraIn"></div></div>
+<div class="logbox" id="log"></div>
+<div class="errore" id="errore"></div>
+
+<div class="esito" id="esito" style="display:none">
+  <h3>3) Guarda e decidi</h3>
+  <div id="badge"></div>
+  <div class="numeri" id="numeri"></div>
+  <div class="duo">
+    <figure style="margin:0">
+      <figcaption>① Il pezzo come è arrivato (ripresa intera)</figcaption>
+      <video id="vOrigin" controls playsinline muted></video>
+    </figure>
+    <figure style="margin:0">
+      <figcaption>② Quello che entrerebbe nell'addestramento (solo tastiera)</figcaption>
+      <video id="vPreparato" controls playsinline muted></video>
+    </figure>
+  </div>
+  <div id="bloccoGriglia" style="display:none">
+    <figure style="margin:0">
+      <figcaption>③ Il controllo in movimento: un riquadro per tasto su <b>tutto il pezzo</b>
+        (un fotogramma ogni tanto, senza audio)</figcaption>
+      <video class="cgr" id="vGriglia" controls loop muted playsinline></video>
+    </figure>
+  </div>
+  <img class="controllo" id="controllo" alt="controllo della griglia trovata (primo frame)">
+  <p class="pill" style="margin:8px 0 0">
+    Nel video ③ e nell'immagine qui sotto: <b style="color:#3cdc3c">verdi i tasti bianchi</b>,
+    <b style="color:#5a9bff">blu i neri</b> (col nome della nota), e il riquadro
+    <b style="color:#e879f9">magenta</b> è il pezzo che entrerebbe nell'addestramento
+    (l'immagine è il <b>primo frame</b>: se la griglia scivola più avanti lo dice il video).
+    Un riquadro per tasto: se non stanno appoggiati uno per tasto, se finiscono sulla cassa o
+    fuori dalla tastiera, la griglia è sbagliata — scrivi il rettangolo giusto qui sotto e riprova.</p>
+  <div class="azioni">
+    <button class="ok" id="nelCantiere" type="button">✅ Aggiungi all'addestramento</button>
+    <span class="pill">Se la griglia è sbagliata:
+      <input type="text" id="rettangolo" placeholder="x1,y1,x2,y2 (pixel del punto ①)" size="22">
+      <button class="sm" id="riprova" type="button">↻ riprova con questo rettangolo</button></span>
+    <button class="sm" id="butta" type="button">🗑 butta via (libera disco)</button>
+  </div>
+</div>
+
+<h3>4) Pezzi pronti per l'addestramento <span class="pill" id="quantiCantiere"></span></h3>
+<div id="cantiere" class="pill">nessun pezzo preparato</div>
+<div class="azioni">
+  <button class="primary" id="addestra" type="button">🎓 Addestra su questi pezzi</button>
+  <label class="riga" style="margin:0">epoche <input type="number" id="epoche" min="1" max="200" value="15"></label>
+  <label class="riga" style="margin:0">raggio <input type="text" id="raggio" value="auto" size="6"></label>
+  <label class="riga" style="margin:0"><input type="checkbox" id="svuotaCantiere" checked> svuota il cantiere dopo</label>
+  <button class="sm" id="svuota" type="button">🗑 svuota</button>
+</div>
+<div class="errore" id="erroreCantiere"></div>
+<p class="spiega" style="margin-top:14px">
+  L'addestramento è un <b>corso normale</b> del sito (lo ritrovi in <i>Lavori</i> della pagina
+  principale, con log e «annulla»). Da <b>3-4 pezzi</b> in su il modello comincia a valere qualcosa:
+  con un pezzo solo non esiste nessuna misura onesta.<br>
+  ← <a href="/">torna allo Studio</a>
+</p>
+
+<script>
+const $ = id => document.getElementById(id);
+let esempi = [], pid = null, timer = null, casoScelto = false, falliti = 0;
+
+const mmss = s => { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const num = (id, def) => { const v = parseFloat(($(id).value || '').replace(',', '.')); return isNaN(v) ? def : v; };
+const errore = t => { $('errore').textContent = t || ''; };
+const erroreC = t => { $('erroreCantiere').textContent = t || ''; };
+
+// --- elenco degli esempi del dataset -------------------------------------------------
+async function caricaEsempi(aggiorna) {
+  $('statoEsempi').textContent = 'leggo l\'elenco del dataset…';
+  try {
+    const r = await fetch('/api/esempi' + (aggiorna ? '?aggiorna=1' : ''));
+    const d = await r.json();
+    esempi = d.esempi || [];
+    if (!esempi.length) {
+      $('statoEsempi').textContent = 'elenco non disponibile' + (d.errore ? ': ' + d.errore : '') +
+        ' — puoi comunque usare un tuo video qui a destra.';
+      return;
+    }
+    $('numero').max = esempi.length;
+    if (d.spazio_libero_gb !== undefined) {
+      $('spazio').textContent = d.spazio_libero_gb + ' GB liberi su disco' +
+        (d.spazio_libero_gb < 2 ? ' (pochi: butta via i pezzi che non usi)' : '');
+    }
+    $('statoEsempi').textContent = esempi.length + ' registrazioni (video + MIDI vero), ' +
+      '«4» = la quarta per data';
+    disegnaElenco();
+  } catch (e) {
+    $('statoEsempi').textContent = 'errore nel leggere l\'elenco: ' + e;
+  }
+}
+
+function disegnaElenco() {
+  const c = $('elenco');
+  c.innerHTML = '';
+  const scelto = parseInt($('numero').value, 10);
+  esempi.forEach(v => {
+    const e = document.createElement('div');
+    e.className = 'e' + (v.n === scelto && !casoScelto ? ' sel' : '');
+    const tag = [];
+    if (v.preparato) {
+      tag.push('<span class="tag fatto">già preparato' +
+        (v.preparato.verdetto ? ' (' + v.preparato.verdetto + ')' : '') + '</span>');
+    }
+    if ((v.modelli || []).length) {
+      tag.push('<span class="tag usa">già usato nel modello ' + v.modelli[0].id + '</span>');
+    }
+    e.innerHTML = '<span class="n">' + v.n + '.</span><span>' + v.compositore + ' — ' + v.brano +
+      ' <span class="br">(' + mmss(v.durata) + ', ' + v.split + ', ' + v.suona + ')</span></span> ' +
+      tag.join(' ');
+    e.onclick = () => { $('numero').value = v.n; casoScelto = false; disegnaElenco(); };
+    c.appendChild(e);
+  });
+  aggiornaScelto();
+}
+
+function aggiornaScelto() {
+  const n = parseInt($('numero').value, 10);
+  const v = esempi.find(x => x.n === n);
+  $('scelto').textContent = casoScelto ? 'ne prendo una a caso'
+    : (v ? v.rec + ' (' + mmss(v.durata) + ')' : '');
+}
+
+// --- le due sorgenti: esempio del dataset oppure i miei file -------------------------
+function scegliSorgente(quale) {
+  $('ckEsempio').checked = quale === 'esempio';
+  $('ckFile').checked = quale === 'file';
+  $('cardEsempio').classList.toggle('sel', quale === 'esempio');
+  $('cardFile').classList.toggle('sel', quale === 'file');
+}
+$('ckEsempio').onclick = () => scegliSorgente('esempio');
+$('ckFile').onclick = () => scegliSorgente('file');
+$('caso').onclick = () => { casoScelto = true; disegnaElenco(); };
+$('numero').oninput = () => { casoScelto = false; disegnaElenco(); };
+$('aggiorna').onclick = () => caricaEsempi(true);
+
+// --- passo 0: parte e segue il lavoro -------------------------------------------------
+async function avvia(rettangolo) {
+  errore('');
+  const daFile = $('ckFile').checked;
+  const forza = $('forza').checked;
+  const fd = new FormData();
+  fd.append('sorgente', daFile ? 'file' : 'esempio');
+  fd.append('durata', num('durata', 60));
+  fd.append('inizio', num('inizio', 0));
+  if (forza) { fd.append('forza', '1'); }
+  if (rettangolo) { fd.append('rettangolo', rettangolo); }
+  if (daFile) {
+    const v = $('fileVideo').files[0], m = $('fileMidi').files[0];
+    if (!v) {
+      errore('serve il video del brano: senza video non c\'è niente da preparare');
+      return;
+    }
+    if (!m && !forza) {
+      errore('servono il video E il MIDI, con lo stesso nome (es. brano1.mp4 e brano1.mid) — ' +
+        'oppure spunta «procedi lo stesso» per vedere comunque la griglia');
+      $('forza').focus();
+      return;
+    }
+    // con più file caricati ne mando UNO per volta: il primo video (col suo MIDI se il nome combacia)
+    fd.append('file', v);
+    if (m) { fd.append('file', m); }
+  } else {
+    if (!esempi.length) { errore('elenco del dataset non disponibile: usa un tuo video'); return; }
+    if (casoScelto) { fd.append('caso', '1'); } else { fd.append('numero', $('numero').value); }
+  }
+  $('avvia').disabled = true;
+  $('esito').style.display = 'none';
+  $('barra').style.display = 'block';
+  $('barraIn').style.width = '35%';
+  $('log').textContent = '';
+  try {
+    const r = await fetch('/api/prepara', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!r.ok || d.errore) {
+      let m = d.errore || ('HTTP ' + r.status);
+      if (d.forzabile) {
+        m += ' · se vuoi solo vedere la griglia spunta «procedi lo stesso» e riprova';
+        $('forza').checked = true;
+      }
+      throw new Error(m);
+    }
+    pid = d.id;
+    $('log').textContent = 'passo 0 avviato (' + pid + ')…';
+    timer = setInterval(segui, 1200);
+    segui();
+  } catch (e) {
+    errore('non parte: ' + e.message);
+    finito();
+  }
+}
+
+async function segui() {
+  if (!pid) { return; }
+  try {
+    const r = await fetch('/api/prepara/' + pid);
+    const d = await r.json();
+    if (d.errore) { throw new Error(d.errore); }
+    falliti = 0;
+    errore('');                       // un guaio di rete passeggero non deve restare scritto
+    let testo = (d.log || []).join('\n');
+    if (d.fase) { testo += '\n» ' + d.fase; }
+    $('log').textContent = testo;
+    $('log').scrollTop = $('log').scrollHeight;
+    if (!d.in_corso) { clearInterval(timer); timer = null; mostraEsito(d); finito(); }
+  } catch (e) {
+    // Il server può essere occupato o appena riavviato (o il portatile si è svegliato): la
+    // richiesta non arriva e il browser dice «Failed to fetch». Il timer continua, quindi riprovo
+    // e lo scrivo solo se insiste davvero — un solo blip non deve far sembrare morto il passo 0.
+    if (++falliti >= 3) {
+      errore('seguo il passo 0: ' + e.message + ' — continuo a riprovare…');
+    }
+  }
+}
+
+function finito() {
+  $('avvia').disabled = false;
+  $('barraIn').style.width = '100%';
+  setTimeout(() => { $('barra').style.display = 'none'; $('barraIn').style.width = '0'; }, 600);
+}
+
+function mostraEsito(d) {
+  const n = d.numeri || {};
+  // IL PASSO 0 GUARDA UN FOTOGRAMMA OGNI `passo` (il controllo costa, e su un pezzo fermo si paga
+  // tutto): il numero da mostrare e' `campioni` (quelli guardati), non `frame` (quelli del pezzo).
+  // Con i json vecchi, che non hanno ne' `campioni` ne' `passo`, si ricade sui fotogrammi del pezzo.
+  const a = n.angoli_tasti || {};
+  const aQuanti = (a.passo > 1 && a.campioni)
+    ? a.campioni + ' campioni (uno ogni ' + a.passo + ' di ' + a.frame + ' fotogrammi)'
+    : (a.campioni || a.frame) + ' fotogrammi';
+  $('esito').style.display = 'block';
+  const v = (n.verdetto || (d.stato === 'errore' ? 'errore' : '')).toLowerCase();
+  const testo = { ok: '✅ griglia trovata bene', incerto: '⚠︎ griglia incerta: guarda il controllo',
+                  rifiuto: '⛔ rifiutata: NON addestrare così', errore: '⛔ non riuscito' }[v] ||
+                (d.stato || '');
+  $('badge').innerHTML = '<span class="badge ' + v + '">' + testo + '</span> ' +
+    (d.esempio ? '<span class="pill">esempio ' + (d.numero || '') + ' · ' + d.esempio + ' </span>' : '') +
+    (d.pezzo ? '<span class="pill">pezzo ' + d.pezzo + '</span>' : '') +
+    (d.senza_midi ? '<span class="pill" style="color:var(--warn)">senza MIDI: la griglia si guarda, ' +
+      'all\'addestramento non si può aggiungere</span>' : '');
+  $('numeri').innerHTML = [
+    ['passo tasto', n.passo ? n.passo + ' px' : '—'],
+    ['passo dal profilo', n.passo_profilo ? n.passo_profilo + ' px' : '—'],
+    ['scarto dal profilo', (n.scarto_dal_profilo_percento === undefined || n.scarto_dal_profilo_percento === null) ? '—' : n.scarto_dal_profilo_percento + ' %'],
+    ['inlier', (n.inlier === undefined || n.inlier === null) ? '—' : n.inlier],
+    ['plausibilità', (n.evidenza === undefined || n.evidenza === null) ? '—' : n.evidenza],
+    ['tasti nella finestra', n.tasti_nel_frame ? n.tasti_nel_frame : '—'],
+    ['tasti fuori dal ritaglio', (n.tasti_fuori === undefined || n.tasti_fuori === null) ? '—' : n.tasti_fuori],
+    ['tasti fuori dalla tastiera', (n.tasti_fuori_dalla_tastiera === undefined || n.tasti_fuori_dalla_tastiera === null) ? '—' : n.tasti_fuori_dalla_tastiera],
+    ['griglia sui tasti misurati', !n.griglia_sui_tasti ? '—' :
+      ((n.griglia_sui_tasti.ok ? 'OK: ' : 'FUORI: ') + 'LA0 del modello a ' +
+       n.griglia_sui_tasti.x_modello_la0 + ' px contro ' + n.griglia_sui_tasti.x_la0 +
+       ' px misurati (scarto ' + n.griglia_sui_tasti.scarto_sx_px + '), DO8 a ' +
+       n.griglia_sui_tasti.x_modello_c8 + ' px contro ' + n.griglia_sui_tasti.x_c8 +
+       ' px (scarto ' + n.griglia_sui_tasti.scarto_dx_px + '); soglia mezzo tasto, ' +
+       n.griglia_sui_tasti.soglia_px + ' px')],
+    ['finestra del video preparato', !n.finestra_usata ? '—' :
+      ('x ' + n.finestra_usata[0] + '..' + n.finestra_usata[2] + ', y ' + n.finestra_usata[1] +
+       '..' + n.finestra_usata[3] + (n.larghezza_uscita ? ' — ' + n.larghezza_uscita + ' px larghi' : ''))],
+    ['fronte dei tasti bianchi', (n.lw_fronte === undefined || n.lw_fronte === null) ? '—' :
+      ('misurato: ' + n.lw_fronte + ' unità del modello, i riquadri verdi arrivano lì')],
+    ['punta dei tasti neri', (n.lb_fronte === undefined || n.lb_fronte === null) ? '—' :
+      ('misurata: ' + n.lb_fronte + ' unità del modello, i riquadri blu arrivano lì')],
+    ['tastiera misurata', (n.estremi ? n.estremi.x_la0 + '..' + n.estremi.x_c8 + ' px (' + n.estremi.tasti + ' tasti)' : '—')],
+    ['tasti neri verificati', (n.neri_ok === undefined || n.neri_ok === null) ? '—' :
+      (n.neri_ok + ' al posto giusto, ' + (n.neri_coperti || 0) + ' sotto una mano, ' + (n.neri_mancanti || 0) + ' fuori posto')],
+    ['x tasto per tasto', !n.tasti_misurati ? '—' :
+      (n.tasti_misurati.misurati + ' misurati (' + n.tasti_misurati.neri + ' neri, ' +
+       n.tasti_misurati.bordi + ' bordi), ' + n.tasti_misurati.incoerenti + ' incoerenti, ' +
+       n.tasti_misurati.ipotizzati + ' ipotizzati; la griglia si sposta fino a ' +
+       n.tasti_misurati.escursione_tasti + ' tasti')],
+    ['angoli dei tasti bianchi', !n.angoli_tasti ? '—' :
+      (a.decisa === 'ferma'
+        ? 'fermi: si spostano al massimo di ' + a.x_max_px + ' px in x e ' + a.y_max_px +
+          ' px in y su ' + aQuanti + ' (soglia ' + a.tolleranza_x_px + ' in x e ' +
+          a.tolleranza_y_px + ' in y px' +
+          (a.fuori ? '; ' + a.fuori +
+            (a.fuori === 1 ? ' campione storto' : ' campioni storti') +
+            (a.di_fila_max === undefined
+              ? ', sotto il margine di ' + a.fuori_max
+              : ', ma mai più di ' + a.di_fila_max + ' di fila (il margine è ' +
+                a.fuori_max + ')') : '') +
+          '): niente inseguimento, ritaglio e griglia del primo fotogramma per tutto il video'
+        : a.decisa === 'si muove'
+          ? 'si spostano' + (a.primo_fuori ? ', dal fotogramma ' + a.primo_fuori : '') +
+            ' (soglia ' + a.tolleranza_x_px + ' px in x e ' +
+            a.tolleranza_y_px + ' px in y' +
+            (a.di_fila_max ? '; ' + a.di_fila_max + ' campioni storti di fila, il margine è ' +
+              a.fuori_max : '') + '): la griglia insegue i tasti'
+          : 'non si riesce a misurarli su abbastanza fotogrammi (' +
+            a.misurabili + ' su ' + aQuanti + '): si insegue come prima')],
+    ['griglia inseguita', !n.inseguimento ? '—' :
+      (n.inseguimento.agganciati + '/' + n.inseguimento.frame + ' fotogrammi agganciati, ' +
+       n.inseguimento.riavvii + ' riavvii, inlier mediano ' + n.inseguimento.inlier_mediano +
+       '; la tastiera si sposta di ' + n.inseguimento.spostamento_tasti + ' tasti' +
+       (n.inseguimento.moto_angoli_tasti === undefined || n.inseguimento.moto_angoli_tasti === null
+         ? '' : ' (i 4 angoli della zona: ' + n.inseguimento.moto_angoli_tasti + ')') +
+       (n.inseguimento.ferma
+         ? ' — misurata ferma: si tiene la griglia del primo fotogramma per tutto il video' : ''))],
+    ['ritaglio del video', (n.inseguimento && n.inseguimento.segue === false) || a.decisa === 'ferma'
+      ? 'fermo: la camera non si muove, griglia e ritaglio del primo fotogramma per tutto il video' :
+      (n.ritaglio_video === 'stabilizzato' ?
+        'segue la tastiera (la camera si muoveva: la tastiera resta ferma e grande uguale)' :
+        (n.ritaglio_video ? 'fisso (la camera sta ferma)' : '—'))],
+    ['ritaglio', n.ritaglio || '—'],
+    ['rettangolo', n.rettangolo ? n.rettangolo.join(', ') : '—']
+  ].map(x => '<span>' + x[0] + ': <b>' + x[1] + '</b></span>').join('') +
+    (n.perche ? '<span style="flex-basis:100%">' + n.perche + '</span>' : '');
+  const u = d.url || {};
+  if (u.origine) { $('vOrigin').src = u.origine; }
+  if (u.preparato) { $('vPreparato').src = u.preparato; }
+  if (u.controllo) { $('controllo').src = u.controllo + '?t=' + Date.now(); }
+  const g = $('vGriglia');                  // il controllo in movimento (non c'è nei passi 0 vecchi)
+  if (u.griglia) {
+    g.src = u.griglia + '?t=' + Date.now();
+    $('bloccoGriglia').style.display = 'block';
+    g.play().catch(() => {});               // muto: i browser lo lasciano partire da soli
+  } else {
+    g.removeAttribute('src');
+    g.load();
+    $('bloccoGriglia').style.display = 'none';
+  }
+  const pronto = d.stato === 'fatto';
+  $('nelCantiere').disabled = !pronto || !!d.senza_midi;
+  $('nelCantiere').textContent = d.senza_midi ? '✅ Aggiungi all\'addestramento (serve il MIDI)'
+                                              : '✅ Aggiungi all\'addestramento';
+  $('rettangolo').value = '';
+  if (d.stato === 'rifiuto') {
+    errore('Rifiutata: guarda il punto ② e il controllo, poi scrivi il rettangolo giusto qui sotto e riprova.');
+  } else if (pronto && d.senza_midi) {
+    errore('Preparato senza MIDI: la griglia la guardi qui sopra (punti ② e ③), ma per addestrare ' +
+      'serve il MIDI vero di questa esecuzione, con lo stesso nome del video.');
+  } else if (pronto) {
+    errore(d.errore || '');
+  } else {
+    errore(d.errore || 'il passo 0 non è riuscito');
+  }
+}
+
+// --- cantiere: i pezzi pronti per l'addestramento -------------------------------------
+async function leggiCantiere() {
+  try {
+    const d = await (await fetch('/api/cantiere')).json();
+    const p = d.pezzi || [];
+    const buoni = p.filter(x => x.ok);
+    $('quantiCantiere').textContent = p.length ? '(' + p.length + ')' : '';
+    $('cantiere').innerHTML = p.length ? p.map(x => '• <b>' + x.nome + '</b> ' +
+      (x.ok ? '(' + x.mb + ' MB)' : '<span style="color:var(--err)">senza MIDI: non si può usare</span>'))
+      .join('<br>') : 'nessun pezzo preparato';
+    $('addestra').disabled = !buoni.length;
+    if (d.spazio_libero_gb !== undefined && d.spazio_libero_gb < 2) {
+      erroreC('attenzione: ' + d.spazio_libero_gb + ' GB liberi su disco');
+    }
+  } catch (e) { erroreC('cantiere: ' + e); }
+}
+
+$('nelCantiere').onclick = async () => {
+  errore('');
+  erroreC('');
+  if (!pid) { return; }
+  try {
+    const r = await fetch('/api/prepara/' + pid + '/cantiere', { method: 'POST' });
+    const d = await r.json();
+    if (d.errore) { throw new Error(d.errore); }
+    $('nelCantiere').disabled = true;
+    $('nelCantiere').textContent = '✅ nel cantiere';
+    leggiCantiere();
+  } catch (e) { errore('non entra nel cantiere: ' + e.message); }
+};
+
+$('butta').onclick = async () => {
+  errore('');
+  if (!pid) { return; }
+  try {
+    await fetch('/api/prepara/' + pid + '/elimina', { method: 'POST' });
+    pid = null;
+    $('esito').style.display = 'none';
+    $('log').textContent = '';
+  } catch (e) { errore('non riesco a buttarlo via: ' + e); }
+};
+
+$('riprova').onclick = () => {
+  const r = ($('rettangolo').value || '').trim();
+  if (!/^-?\d+\s*,\s*-?\d+\s*,\s*-?\d+\s*,\s*-?\d+$/.test(r)) {
+    errore('il rettangolo vuole quattro numeri: x1,y1,x2,y2 (pixel del video al punto ①)');
+    return;
+  }
+  avvia(r);
+};
+
+$('svuota').onclick = async () => {
+  erroreC('');
+  await fetch('/api/cantiere/svuota', { method: 'POST' });
+  leggiCantiere();
+};
+
+$('addestra').onclick = async () => {
+  erroreC('');
+  const fd = new FormData();
+  fd.append('epoche', num('epoche', 15));
+  fd.append('raggio', ($('raggio').value || 'auto').trim());
+  fd.append('inferenza', '1');
+  if ($('svuotaCantiere').checked) { fd.append('svuota', '1'); }
+  $('addestra').disabled = true;
+  try {
+    const r = await fetch('/api/cantiere/addestra', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!d.corso) { throw new Error(d.errore || 'non è partito'); }
+    $('cantiere').innerHTML = 'addestramento avviato sul corso <b>' + d.corso + '</b> con ' +
+      d.pezzi.length + ' pezzi: seguilo dalla pagina principale (Lavori). <a href="/">Apri lo Studio</a>';
+    leggiCantiere();
+  } catch (e) {
+    erroreC('non parte: ' + e.message);
+    $('addestra').disabled = false;
+  }
+};
+
+$('avvia').onclick = () => avvia(null);
+caricaEsempi(false);
+leggiCantiere();
+</script>
+</body></html>

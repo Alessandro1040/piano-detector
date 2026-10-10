@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="it"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tasti e probabilità</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--mut:#777;--card:#f1f1f1;--grid:#cfcfcf;box-sizing:border-box}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#15171a;--fg:#eee;--mut:#9aa;--card:#23262b;--grid:#444}}
+body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif}
+.barra{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px}
+.barra label{display:flex;flex-direction:column;font-size:12px;color:var(--mut)}
+.leg{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut)}
+.leg i{width:120px;height:10px;border-radius:5px;background:linear-gradient(90deg,hsl(195 0% 55%),hsl(195 100% 55%))}
+#vid{position:relative;max-width:900px}
+#vid video,#vid canvas{width:100%;display:block}
+#ov{position:absolute;inset:0;pointer-events:none}
+.ctrl{display:flex;gap:8px;align-items:center;margin:8px 0 14px}.ctrl input{flex:1}
+#gr{display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:8px}
+.t{background:var(--card);border-radius:6px;padding:4px;text-align:center;font-size:11px}
+.t canvas{width:100%;aspect-ratio:24/56;display:block;border-radius:3px;border:3px solid var(--grid);box-sizing:border-box}
+.t.off{opacity:.35}.t.off canvas{border-style:dashed}
+.t b{display:block}
+</style></head><body>
+<h2 style="margin:0 0 10px">Tasti e probabilità di pressione</h2>
+<div class="barra">
+  <label>Video<input type="file" id="fv" accept="video/*"></label>
+  <label>griglia.json<input type="file" id="fg" accept=".json"></label>
+  <label>probabilita.json<input type="file" id="fp" accept=".json"></label>
+  <span class="leg">0%<i></i>100%</span>
+  <span id="src" style="color:var(--mut);font-size:12px"></span>
+</div>
+<div id="stato" style="color:var(--mut);margin-bottom:8px">Carica i tre file.</div>
+<div id="vid"><video id="v" playsinline muted></video><canvas id="ov"></canvas></div>
+<div class="ctrl"><button id="pp">▶︎</button><input type="range" id="sl" min="0" max="0" value="0" step="1"><span id="tm">0</span></div>
+<div id="gr"></div>
+<script>
+const $=id=>document.getElementById(id);
+let G=null,P=null,tiles=new Map(),ordine=[];
+const v=$('v'),ov=$('ov'),octx=ov.getContext('2d');
+const col=p=>`hsl(195 ${Math.round(p*100)}% ${55-Math.round(p*8)}%)`;   // saturazione = probabilità
+const nomeNota=n=>['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][n%12]+(Math.floor(n/12)-1);
+const leggi=f=>typeof f==='string'?fetch(f).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status+' su '+f);return r.json()}):f.text().then(JSON.parse);
+$('fv').onchange=e=>{v.src=URL.createObjectURL(e.target.files[0]);};
+$('fg').onchange=async e=>{G=await leggi(e.target.files[0]);costruisci();};
+$('fp').onchange=async e=>{P=await leggi(e.target.files[0]);costruisci();};
+$('pp').onclick=()=>v.paused?v.play():v.pause();
+$('sl').oninput=e=>{v.currentTime=(+e.target.value+.5)/G.fps;};
+v.onloadedmetadata=()=>{ov.width=v.videoWidth;ov.height=v.videoHeight;};
+
+function costruisci(){
+  if(!G||!P)return;
+  const s=new Set();                       // unione dei tasti che compaiono in almeno un frame
+  G.frames.forEach(fr=>Object.keys(fr.tasti).forEach(k=>s.add(+k)));
+  ordine=[...s].sort((a,b)=>a-b); $('gr').innerHTML=''; tiles.clear();
+  for(const n of ordine){
+    const d=document.createElement('div'),c=document.createElement('canvas');
+    c.width=P.patch.w*2;c.height=P.patch.h*2;
+    d.className='t off';d.innerHTML=`<b>${nomeNota(n)}</b><span>–</span>`;d.prepend(c);
+    $('gr').appendChild(d);tiles.set(n,{d,c,x:c.getContext('2d'),sp:d.querySelector('span')});
+  }
+  $('sl').max=G.n_frame-1; $('stato').textContent=`${ordine.length} tasti nel video · soglia modello ${P.soglia}`;
+  disegna();
+}
+// quad della patch "vista dalla rete" (stessi margini/estensione di comune.patch):
+// TL, TR, BR, BL in pixel del video
+function quadPatch(poly){
+  const [tl,tr,br,bl]=poly,m=P.patch.margine,e=P.patch.ext;
+  const at=[tr[0]-tl[0],tr[1]-tl[1]],ab=[br[0]-bl[0],br[1]-bl[1]];
+  const TL=[tl[0]-m*at[0],tl[1]-m*at[1]],TR=[tr[0]+m*at[0],tr[1]+m*at[1]];
+  let BL=[bl[0]-m*ab[0],bl[1]-m*ab[1]],BR=[br[0]+m*ab[0],br[1]+m*ab[1]];
+  BL=[BL[0]+e*(BL[0]-TL[0]),BL[1]+e*(BL[1]-TL[1])];
+  BR=[BR[0]+e*(BR[0]-TR[0]),BR[1]+e*(BR[1]-TR[1])];
+  return [TL,TR,BR,BL];                       // 0,0 / 1,0 / 1,1 / 0,1 del quadrato unitario
+}
+// omografia in forma chiusa: (u,v) in [0,1]^2 -> pixel del video (Heckbert)
+function omografia(q){
+  const [x0,y0]=q[0],[x1,y1]=q[1],[x2,y2]=q[2],[x3,y3]=q[3];
+  const sx=x0-x1+x2-x3, sy=y0-y1+y2-y3;
+  const dx1=x1-x2, dx2=x3-x2, dy1=y1-y2, dy2=y3-y2, den=dx1*dy2-dx2*dy1;
+  let g=0,h=0;
+  if((sx||sy)&&den){g=(sx*dy2-dx2*sy)/den;h=(dx1*sy-sx*dy1)/den}
+  return [x1-x0+g*x1,x3-x0+h*x3,x0, y1-y0+g*y1,y3-y0+h*y3,y0, g,h,1];
+}
+function applica(M,u,v){
+  const w=M[6]*u+M[7]*v+M[8];
+  return [(M[0]*u+M[1]*v+M[2])/w,(M[3]*u+M[4]*v+M[5])/w];
+}
+const CELLE=3;   // sottocelle per lato: 1 = affine (sbaglia di ~20% di un tasto), 3 = ~2%
+// ritaglia il tasto con la STESSA prospettiva che vede la rete, a CELLE x CELLE sottocelle
+function disegnaTassello(x,video,poly,W,H){
+  const M=omografia(quadPatch(poly));
+  for(let i=0;i<CELLE;i++)for(let j=0;j<CELLE;j++){
+    const u0=i/CELLE,u1=(i+1)/CELLE,v0=j/CELLE,v1=(j+1)/CELLE;
+    const d0=[u0*W,v0*H],s0=applica(M,u0,v0),s1=applica(M,u1,v0),s3=applica(M,u0,v1),
+          s2=applica(M,u1,v1);
+    if(!(isFinite(s0[0])&&isFinite(s1[0])&&isFinite(s3[0]))) continue;
+    const e1=[s1[0]-s0[0],s1[1]-s0[1]],e2=[s3[0]-s0[0],s3[1]-s0[1]];
+    const det=e1[0]*e2[1]-e1[1]*e2[0];
+    if(Math.abs(det)<1e-9) continue;
+    const f1=[(u1-u0)*W,0],f2=[0,(v1-v0)*H];                 // angoli cella nel tassello
+    const a=(f1[0]*e2[1]-f2[0]*e1[1])/det, c=(f2[0]*e1[0]-f1[0]*e2[0])/det;
+    const b=(f1[1]*e2[1]-f2[1]*e1[1])/det, d=(f2[1]*e1[0]-f1[1]*e2[0])/det;
+    const tx=d0[0]-a*s0[0]-c*s0[1], ty=d0[1]-b*s0[0]-d*s0[1];
+    const xs=[s0[0],s1[0],s2[0],s3[0]],ys=[s0[1],s1[1],s2[1],s3[1]];
+    const bx=Math.max(0,Math.floor(Math.min(...xs))-1), by=Math.max(0,Math.floor(Math.min(...ys))-1);
+    const bw=Math.min(video.videoWidth-bx,Math.ceil(Math.max(...xs))+2-bx);
+    const bh=Math.min(video.videoHeight-by,Math.ceil(Math.max(...ys))+2-by);
+    if(bw<=0||bh<=0) continue;
+    x.save();
+    x.beginPath();x.rect(u0*W,v0*H,(u1-u0)*W,(v1-v0)*H);x.clip();   // niente sbavature ai bordi
+    x.setTransform(a,b,c,d,tx,ty);
+    x.drawImage(video,bx,by,bw,bh,bx,by,bw,bh);
+    x.restore();
+  }
+}
+function disegna(){
+  if(!G||!P||!v.videoWidth)return;
+  const j=Math.max(0,Math.min(G.n_frame-1,Math.floor(v.currentTime*G.fps)));
+  const fr=G.frames[j].tasti,pr=P.frames[j]?P.frames[j].p:{};
+  $('sl').value=j;$('tm').textContent=`${v.currentTime.toFixed(2)} s · frame ${j}`;
+  octx.clearRect(0,0,ov.width,ov.height);octx.lineWidth=2;
+  let premuti=0,attivi=0;
+  for(const n of ordine){
+    const t=tiles.get(n),k=fr[n];
+    if(!k){t.d.style.display='none';continue}               // tasto non inquadrato in questo frame
+    t.d.style.display='';
+    const p=pr[n],att=p!==undefined;
+    t.d.classList.toggle('off',!att);
+    if(att){attivi++;if(p>=P.soglia)premuti++;
+      t.c.style.borderColor=col(p);t.c.style.boxShadow=p>=P.soglia?`0 0 6px ${col(1)}`:'none';t.sp.textContent=Math.round(p*100)+'%';
+      octx.strokeStyle=col(p);octx.beginPath();k.poligono.forEach((q,i)=>i?octx.lineTo(q[0],q[1]):octx.moveTo(q[0],q[1]));octx.closePath();octx.stroke();
+    }else{t.c.style.borderColor='';t.c.style.boxShadow='none';t.sp.textContent='lontano'}
+    const W=t.c.width,H=t.c.height;
+    t.x.setTransform(1,0,0,1,0,0);t.x.clearRect(0,0,W,H);
+    disegnaTassello(t.x,v,k.poligono,W,H);
+  }
+  $('stato').textContent=`${attivi} tasti valutati (vicini alle mani) · ${premuti} stimati premuti`;
+}
+function ciclo(){disegna();v.requestVideoFrameCallback?v.requestVideoFrameCallback(ciclo):requestAnimationFrame(ciclo)}
+v.addEventListener('seeked',disegna);v.addEventListener('timeupdate',disegna);ciclo();
+
+// --- modalità "dal corso": /viewer?job=<id>&pezzo=<stem> carica da sé i tre file
+(async()=>{
+  const q=new URLSearchParams(location.search),id=q.get('job'),pezzo=q.get('pezzo');
+  if(!id||!pezzo)return;
+  const avvisa=s=>{$('src').textContent=s};
+  try{
+    avvisa(`carico la prova del corso ${id}…`);
+    const rj=await fetch('/api/job/'+id);
+    if(!rj.ok)throw new Error(`corso ${id} non trovato (HTTP ${rj.status})`);
+    const job=await rj.json();
+    const cop=((job.meta||{}).coppie||[]).find(c=>c.stem===pezzo);
+    if(!cop)throw new Error(`pezzo '${pezzo}' non presente nel corso ${id}`);
+    const base='/api/job/'+id+'/file/';
+    v.src=base+cop.video;
+    await new Promise(ok=>{if(v.readyState>=1)ok();else v.addEventListener('loadedmetadata',ok,{once:true})});
+    G=await leggi(base+'griglia/'+pezzo+'/griglia.json');
+    P=await leggi(base+'probabilita/'+pezzo+'.json');
+    costruisci();
+    avvisa(`prova del corso ${id} · pezzo ${pezzo} (${cop.video})`);
+  }catch(e){avvisa('non riesco a caricare la prova: '+e.message)}
+})();
+</script></body></html>

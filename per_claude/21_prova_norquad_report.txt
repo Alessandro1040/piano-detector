@@ -1,0 +1,19 @@
+############ LOG DEL MOTORE ############
+[ERRORE] meno di 2 tasti neri riconoscibili: impossibile misurare i tasti
+[video] demo_video.mp4: 1280x720, 30.000 fps, 360 frame, passo=1
+[calibrato] fase 1: regione della tastiera (YOLO + tracker)
+[calibrato] fase 2: riquadri per nota e per frame
+
+############ ALBERO OUTPUT ############
+find: /tmp/real_norquad: No such file or directory
+n. file clip: 0
+
+############ DIMENSIONI ############
+
+############ notes.json (analisi) ############
+MANCA notes.json
+
+############ song.mid via pretty_midi ############
+MANCA song.mid
+
+############ FINE ############

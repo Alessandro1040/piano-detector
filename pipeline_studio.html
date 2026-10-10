@@ -1,0 +1,2312 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎹 Piano Studio — video → MIDI</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%8E%B9%3C/text%3E%3C/svg%3E">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg:#0a0a0f; --surface:#12121a; --surface2:#1a1a28; --border:#2a2a3a;
+    --accent:#00d4aa; --accent2:#7c3aed; --text:#e0e0e8; --text2:#8888a0;
+    --ok:#00d4aa; --warn:#f5a524; --err:#f43f5e;
+  }
+  body{background:var(--bg);color:var(--text);font:14px/1.5 'Segoe UI',system-ui,-apple-system,sans-serif}
+  .header{background:linear-gradient(135deg,#0f0f1a 0%,#1a0a2e 50%,#0a1a1a 100%);
+          border-bottom:1px solid var(--border);padding:18px 26px;display:flex;
+          align-items:center;gap:16px;flex-wrap:wrap}
+  .header-icon{font-size:36px}
+  .header h1{font-size:22px;font-weight:800;background:linear-gradient(90deg,var(--accent),var(--accent2),#f472b6);
+             -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .header p{color:var(--text2);font-size:12.5px}
+  .badges{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+  .pill{border:1px solid var(--border);background:var(--surface);border-radius:20px;
+        padding:3px 11px;font-size:11.5px;color:var(--text2);white-space:nowrap}
+  .pill b{color:var(--text);font-weight:600}
+  .pill.ok{border-color:#1d6b58;color:var(--ok)}
+  .pill.no{border-color:#7a2636;color:var(--err)}
+  #quadCanvas{position:absolute;left:0;top:0;display:none;cursor:crosshair;z-index:3;
+              background:rgba(0,0,0,.10)}
+  #stage.hasegni #quadCanvas{display:block}
+  #stage.hasegni #preview{cursor:crosshair}
+  main{padding:18px 26px 60px;max-width:1500px;margin:0 auto}
+  .cols{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:18px;align-items:start}
+  @media (max-width:1150px){.cols{grid-template-columns:minmax(0,1fr)}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px}
+  .card h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);
+           margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .card h2 .n{background:var(--accent2);color:#fff;border-radius:50%;width:18px;height:18px;
+              display:inline-flex;align-items:center;justify-content:center;font-size:11px}
+  #stage{position:relative;background:#000;border:1px dashed var(--border);border-radius:10px;
+         min-height:200px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  #stage.dragover{border-color:var(--accent);background:#0d1b1a}
+  #stage.hasvideo{border-style:solid;border-color:var(--border)}
+  #preview{width:100%;max-height:400px;display:none;background:#000}
+  #dropbox{text-align:center;color:var(--text2);padding:26px}
+  #dropbox .big{font-size:32px;margin-bottom:6px}
+  .btn{font:inherit;color:var(--text);background:var(--surface2);border:1px solid var(--border);
+       border-radius:8px;padding:7px 13px;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:#46567a;background:#1f2637}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.primary{background:linear-gradient(135deg,var(--accent2),#a855f7);border-color:transparent;font-weight:600}
+  .btn.primary:hover{filter:brightness(1.15)}
+  .btn.danger{border-color:#7a2636;color:#ffb3c1}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:4px 9px;font-size:12px}
+  .frm{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  @media (max-width:640px){.frm{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .fld{display:flex;flex-direction:column;gap:4px}
+  .fld label{font-size:11.5px;color:var(--text2)}
+  .fld .hint{font-size:10.5px;color:#5f6b7d}
+  input[type=text],input[type=number],select{font:inherit;background:var(--surface2);
+       border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 9px;width:100%}
+  input:focus,select:focus{outline:none;border-color:var(--accent2)}
+  .checks{display:flex;flex-wrap:wrap;gap:14px;margin-top:12px;border-top:1px solid var(--border);padding-top:12px}
+  .checks label{display:flex;gap:6px;align-items:center;color:var(--text2);font-size:12.5px;cursor:pointer}
+  input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
+  .meta{color:var(--text2);font-size:12px;margin-top:10px;display:flex;gap:14px;flex-wrap:wrap}
+  #progressWrap{height:7px;background:var(--surface2);border-radius:5px;overflow:hidden;margin-top:12px}
+  #progressBar{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+  #progressBar.indet{width:35%;animation:slide 1.3s ease-in-out infinite}
+  @keyframes slide{0%{margin-left:-35%}100%{margin-left:100%}}
+  #log,.logbox{background:#08080c;border:1px solid var(--border);border-radius:8px;padding:9px;
+       height:300px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+       font-size:11.5px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+  .logbox{height:260px;margin-top:12px}
+  #log .t,.logbox .t{color:#4a5568;margin-right:7px}
+  #log .w,.logbox .w{color:var(--warn)} #log .e,.logbox .e{color:var(--err)}
+  #log .g,.logbox .g{color:var(--accent)}
+  #log .web,.logbox .web{color:#7c9cff}
+  .gruppoFile{border:1px solid var(--border);border-radius:9px;margin-bottom:10px;overflow:hidden}
+  .gruppoFile>summary{cursor:pointer;padding:8px 11px;background:var(--surface2);font-size:12.5px;font-weight:600}
+  .gruppoFile[open]>summary{border-bottom:1px solid var(--border)}
+  .voci{max-height:270px;overflow:auto;padding:4px 0}
+  .voce{display:flex;gap:9px;align-items:center;padding:3px 11px;font-size:12px}
+  .voce:hover{background:var(--surface2)}
+  .voce .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .voce .mb{color:var(--text2);font-size:10.5px;white-space:nowrap}
+  .voce a{color:#8ec7ff;text-decoration:none}
+  .voce a:hover{text-decoration:underline}
+  .pezzo{display:flex;gap:9px;align-items:center;padding:4px 8px;font-size:12.5px;
+         border-bottom:1px solid var(--border)}
+  .pezzo .st{font-size:10.5px;border-radius:4px;padding:1px 6px;border:1px solid var(--border)}
+  .pezzo input.allinea{flex:0 0 56px;padding:2px 5px;font-size:11.5px;text-align:center;
+    background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:5px}
+  .pezzo .st.ok{color:var(--ok);border-color:#1d6b58}
+  .pezzo .st.ko{color:var(--err);border-color:#7a2636}
+  .runs{max-height:190px;overflow:auto;font-size:12px}
+  .run{display:flex;gap:8px;align-items:center;padding:5px 6px;border-bottom:1px solid var(--border);cursor:pointer}
+  .run:hover{background:var(--surface2)}
+  .run .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .run .st{font-size:10.5px;border-radius:4px;padding:1px 6px;border:1px solid var(--border);white-space:nowrap}
+  .run .st.fatto{color:var(--ok);border-color:#1d6b58}
+  .run .st.in_corso{color:var(--warn);border-color:#6b5420}
+  .run .st.errore,.run .st.annullato{color:var(--err);border-color:#7a2636}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;margin-bottom:14px}
+  .stat{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:9px 11px}
+  .stat .k{font-size:10.5px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
+  .stat .v{font-size:19px;font-weight:700;color:var(--accent);margin-top:2px}
+  .stat .v.sm{font-size:14px}
+  .tabs{display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:12px;flex-wrap:wrap}
+  .tab{background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text2);
+       padding:7px 11px;cursor:pointer;font:inherit;font-size:12.5px}
+  .tab.on{color:var(--accent);border-bottom-color:var(--accent)}
+  .pane{display:none} .pane.on{display:block}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:4px 7px;border-bottom:1px solid var(--border)}
+  th{color:var(--text2);font-weight:500;position:sticky;top:0;background:var(--surface)}
+  #tabWrap{max-height:280px;overflow:auto}
+  .rollWrap{overflow-x:auto;background:#0d0d15;border:1px solid var(--border);border-radius:9px}
+  #roll{display:block}
+  .player{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+          background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-top:14px}
+  .playBtn{width:44px;height:44px;border-radius:50%;font-size:17px;display:flex;align-items:center;
+           justify-content:center;background:linear-gradient(135deg,var(--accent),#00a884);
+           border:none;color:#04211a;cursor:pointer;font-weight:700}
+  .playBtn:disabled{opacity:.4;cursor:not-allowed}
+  .ctl{display:flex;flex-direction:column;gap:2px}
+  .ctl span{font-size:10.5px;color:var(--text2)}
+  .ctl input[type=number],.ctl select{padding:4px 7px;font-size:12.5px;width:auto}
+  .clock{font-family:ui-monospace,monospace;font-size:13px;color:var(--accent);min-width:96px;text-align:center}
+  #kbd{margin-top:12px;position:relative;height:74px;background:#0d0d15;border:1px solid var(--border);
+       border-radius:8px;overflow:hidden}
+  #kbd canvas{display:block}
+  .noteinfo{font-size:12px;color:var(--text2);margin-top:8px;line-height:1.6}
+  code{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+       font-family:ui-monospace,monospace;font-size:12px}
+  .warnbox{background:#2a1f08;border:1px solid #6b5420;color:#ffd9a0;border-radius:8px;
+           padding:9px 11px;font-size:12.5px;margin-top:10px}
+  .errbox{background:#2a0d14;border:1px solid #7a2636;color:#ffb3c1;border-radius:8px;
+          padding:9px 11px;font-size:12.5px;margin-top:10px}
+  .okbox{background:#08221d;border:1px solid #1d6b58;color:#a8f0dd;border-radius:8px;
+         padding:9px 11px;font-size:12.5px;margin-top:10px}
+  .hidden{display:none!important}
+  .mono{font-family:ui-monospace,monospace}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="header-icon">🎹</div>
+  <div>
+    <h1>Piano Studio — video → MIDI</h1>
+    <p>Carica un video di pianoforte: la pipeline rileva tastiera e mani, produce <code>song.mid</code> e lo riproduce qui.</p>
+  </div>
+  <div class="badges">
+    <span class="pill" id="pillServer">server: <b>…</b></span>
+    <span class="pill" id="pillPython">pipeline: <b>…</b></span>
+    <span class="pill" id="pillFfmpeg">ffmpeg: <b>…</b></span>
+    <span class="pill" id="pillPesi">pesi: <b>…</b></span>
+    <span class="pill" id="pillPpan">PPAN: <b>…</b></span>
+    <span class="pill" id="pillDisk">disco: <b>…</b></span>
+  </div>
+</header>
+
+<main>
+<div class="cols">
+  <div>
+    <section class="card">
+      <h2><span class="n">1</span> Video di input</h2>
+      <div id="stage">
+        <video id="preview" controls playsinline></video>
+        <canvas id="quadCanvas" title="clicca i 4 angoli della tastiera"></canvas>
+        <div id="dropbox">
+          <div class="big">🎹</div>
+          <div>Trascina qui un video (mp4, mov, mkv, webm…) oppure</div>
+          <div style="margin-top:10px"><button class="btn" id="scegli">Scegli file…</button></div>
+          <div style="margin-top:8px;font-size:11.5px">tutto in locale: il file non lascia il tuo computer</div>
+        </div>
+      </div>
+      <input type="file" id="file" accept="video/*,.mkv,.mov,.mp4,.avi,.webm,.ts,.mts" class="hidden">
+      <div class="meta" id="fileMeta"></div>
+    </section>
+
+    <section class="card">
+      <h2><span class="n">2</span> Motore e parametri</h2>
+
+      <div class="frm">
+        <div class="fld" style="grid-column:span 2">
+          <label for="motore">Motore di trascrizione</label>
+          <select id="motore">
+            <option value="prospettica" selected>prospettica — griglia geometrica dei tasti (niente YOLO, niente dita)</option>
+            <option value="pipeline">pipeline — YOLO + mani (geometria della tastiera e dita)</option>
+            <option value="ppan">PPAN — “Pay Attention to the Keys” (rete pretrainata dal video)</option>
+            <option value="calibrato">calibrato — sagome per nota (una clip per tasto, ottava dichiarata)</option>
+          </select>
+          <span class="hint" id="motoreHint">…</span>
+        </div>
+      </div>
+
+      <div id="gruppoPipeline">
+      <div class="frm" style="margin-top:12px">
+        <div class="fld">
+          <label for="modello">Modello YOLO</label>
+          <select id="modello">
+            <option value="yolov8m">yolov8m (veloce)</option>
+            <option value="yolov8l" selected>yolov8l (consigliato)</option>
+            <option value="yolov8x">yolov8x (massimo)</option>
+          </select>
+        </div>
+        <div class="fld">
+          <label for="conf">Soglia confidenza (--conf)</label>
+          <input type="number" id="conf" value="0.15" min="0.01" max="0.9" step="0.01">
+          <span class="hint">bassa = trova di più, più falsi positivi</span>
+        </div>
+        <div class="fld">
+          <label for="fpsMax">Frame al secondo elaborati (--fps-max)</label>
+          <input type="number" id="fpsMax" value="30" min="1" max="120" step="1">
+          <span class="hint">abbassalo per andare più veloce</span>
+        </div>
+        <div class="fld">
+          <label for="primaNota">Prima nota MIDI (--prima-nota)</label>
+          <input type="text" id="primaNota" placeholder="auto (stimata)">
+          <span class="hint">C2=36 · C3=48 · C4=60 · C5=72</span>
+        </div>
+        <div class="fld">
+          <label for="ultimaNota">Ultima nota MIDI (--ultima-nota)</label>
+          <input type="text" id="ultimaNota" placeholder="auto">
+          <span class="hint">usata solo se non indichi le ottave</span>
+        </div>
+        <div class="fld">
+          <label for="nOttave">Numero di ottave (--n-ottave)</label>
+          <input type="text" id="nOttave" placeholder="auto">
+          <span class="hint">ha priorità su “ultima nota”</span>
+        </div>
+        <div class="fld">
+          <label for="tracker">Tracker della tastiera</label>
+          <select id="tracker">
+            <option value="template" selected>template</option>
+            <option value="mil">mil</option>
+          </select>
+        </div>
+        <div class="fld">
+          <label for="redetect">Rilevazione piena ogni N frame</label>
+          <input type="number" id="redetect" value="30" min="1" step="1">
+        </div>
+        <div class="fld">
+          <label for="limite">Limite frame (--limite)</label>
+          <input type="text" id="limite" placeholder="tutti i frame">
+          <span class="hint">metti 120 per una prova rapida</span>
+        </div>
+      </div>
+      <div class="checks">
+        <label><input type="checkbox" id="senzaMani"> senza mani (solo griglia, veloce)</label>
+        <label><input type="checkbox" id="debugVideo" checked> salva debug.mp4</label>
+        <label><input type="checkbox" id="senzaProspettiva"> disattiva raddrizzamento prospettico</label>
+      </div>
+      <div class="warnbox">
+        <b>Nota sull’altezza delle note.</b> Da una sola camera l’<i>ottava assoluta</i> è stimata:
+        se il MIDI risulta trasposto, imposta <code>--prima-nota</code> sul Do più a sinistra che vedi
+        (es. 48 = C3, 60 = C4). Con <code>--senza-mani</code> non ci sono note: serve solo a controllare la griglia.
+      </div>
+      </div><!-- /gruppoPipeline -->
+
+      <div id="gruppoPpan" class="hidden">
+        <div class="frm" style="margin-top:12px">
+          <div class="fld" style="grid-column:span 3">
+            <label for="ppanDir">Cartella PPAN (motore + pesi)</label>
+            <input type="text" id="ppanDir" placeholder="~/.cline/…/pianovision-ppan">
+            <span class="hint">deve contenere <code>ppan_infer.py</code> e <code>weights/pytorch_model.bin</code></span>
+          </div>
+          <div class="fld">
+            <label for="ppanStart">Inizio analisi (s) — <code>--start</code></label>
+            <input type="number" id="ppanStart" min="0" step="0.1" placeholder="0">
+          </div>
+          <div class="fld">
+            <label for="ppanMaxSec">Durata analizzata (s) — <code>--max-seconds</code></label>
+            <input type="number" id="ppanMaxSec" min="0.1" step="0.1" placeholder="tutto il video">
+          </div>
+          <div class="fld">
+            <label for="ppanBatch">Finestre per batch — <code>--batch-size</code></label>
+            <input type="number" id="ppanBatch" min="1" max="64" step="1" placeholder="16">
+          </div>
+          <div class="fld">
+            <label for="ppanMinNote">Durata minima nota (s) — <code>--min-note</code></label>
+            <input type="text" id="ppanMinNote" placeholder="0">
+            <span class="hint">es. 0,05 toglie i “bip” da due frame</span>
+          </div>
+          <div class="fld">
+            <label for="ppanCropFrames">Frame per stimare il ritaglio — <code>--crop-frames</code></label>
+            <input type="number" id="ppanCropFrames" min="1" max="30" step="1" placeholder="5">
+          </div>
+          <div class="fld">
+            <label for="ppanThrOnset">Soglia onset — <code>--threshold-onset</code></label>
+            <input type="text" id="ppanThrOnset" placeholder="0.50">
+          </div>
+          <div class="fld">
+            <label for="ppanThrFrame">Soglia frame — <code>--threshold-frame</code></label>
+            <input type="text" id="ppanThrFrame" placeholder="0.50">
+          </div>
+          <div class="fld">
+            <label for="ppanSigmaOnset">Sigma onset — <code>--sigma-onsets</code></label>
+            <input type="text" id="ppanSigmaOnset" placeholder="0.20">
+          </div>
+          <div class="fld">
+            <label for="ppanSigmaFrame">Sigma frame — <code>--sigma-frames</code></label>
+            <input type="text" id="ppanSigmaFrame" placeholder="0.80">
+            <span class="hint">vuoto = valori del paper</span>
+          </div>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="ppanFramesOnly"> testa “frame”: note tenute fino al rilascio</label>
+        </div>
+        <div class="warnbox">
+          <b>Come funziona PPAN.</b> La tastiera viene ritagliata e raddrizzata in una striscia di
+          <b>88 tasti</b>, poi la rete predice il piano roll: non guarda le dita, quindi funziona anche
+          con inquadrature oblique o mani fuori campo. Il <b>ritaglio è la cosa che conta di più</b>:
+          se il risultato è scarso, clicca i 4 angoli della tastiera (l’ordine viene sistemato da solo)
+          e rilancia: con la stima automatica può capitare che il riquadro prenda lo <b>spartito</b>
+          invece dei tasti, e in quel caso il job finisce senza nemmeno una nota.
+          <br><b>Tutta la tastiera in campo:</b> la striscia vale sempre <b>88 tasti</b> (A0–C8),
+          quindi le altezze sono affidabili solo se l’inquadratura contiene la tastiera intera.
+          Su un video che ne mostra solo una parte le note ci sono ma le altezze no.
+          Il modello lavora a <b>30 fps fissi</b> nel venv del progetto PPAN (torch +
+          transformers): il primo avvio carica i pesi in ~5 s, poi costa circa <b>1 s per secondo di video</b>.
+          <br><b>Normalizzazione ffmpeg:</b> lasciala attiva solo per <code>.mov</code>/HEVC o video
+          ruotati. Su un mp4 già compresso la ri-codifica peggiora le note (misurato: 3 note sul file
+          originale, 1 dopo la normalizzazione).
+        </div>
+      </div><!-- /gruppoPpan -->
+
+      <div id="editorAngoli" class="hidden">
+        <div class="meta" style="margin-top:10px">
+          <button class="btn" id="btnQuad" type="button">🎯 Segna i 4 angoli sul video</button>
+          <button class="btn ghost" id="btnQuadAuto" type="button">↺ auto</button>
+          <span class="mono" id="quadTxt" style="font-size:11.5px;color:var(--text2)">ritaglio: automatico (PPAN trova la tastiera)</span>
+        </div>
+        <input type="hidden" id="ppanQuad" value="">
+      </div>
+
+      <div id="gruppoCalibrato" class="hidden">
+        <div class="frm" style="margin-top:12px">
+          <div class="fld">
+            <label for="calPrimaNota">Prima nota visibile (MIDI)</label>
+            <input type="text" id="calPrimaNota" placeholder="vuoto = ottava dichiarata">
+            <span class="hint">se l’ottava è ambigua il risultato lo dichiara; qui la fissi tu</span>
+          </div>
+          <div class="fld">
+            <label for="calFormato">Formato delle clip per nota</label>
+            <select id="calFormato"><option value="mp4" selected>mp4 (H.264)</option><option value="jpeg">cartella di JPEG</option></select>
+          </div>
+          <div class="fld">
+            <label for="calMaxSec">Durata analizzata (s)</label>
+            <input type="text" id="calMaxSec" placeholder="tutto il video">
+          </div>
+          <div class="fld">
+            <label for="calGiu">Soglia giù (0–1)</label>
+            <input type="text" id="calGiu" placeholder="0.6">
+          </div>
+          <div class="fld">
+            <label for="calSu">Soglia su (0–1)</label>
+            <input type="text" id="calSu" placeholder="0.4">
+          </div>
+          <div class="fld">
+            <label for="calFinestra">Finestra (frame, dispari)</label>
+            <input type="text" id="calFinestra" placeholder="5">
+          </div>
+        </div>
+        <div class="warnbox">
+          <b>Come funziona il motore calibrato.</b> Il software misura sul video dove sta ogni tasto in
+          ogni frame (riquadro per nota), scrive una clip per nota e decide premuto/rilasciato dentro il
+          riquadro. Le note <b>non inquadrate non vengono mai emesse</b>. Con i 4 angoli segnati non serve
+          YOLO. Le sagome valgono solo per questo video: caricandone un altro si cancellano.
+        </div>
+      </div><!-- /gruppoCalibrato -->
+
+      <div id="gruppoProspettica" class="hidden">
+        <div class="frm" style="margin-top:12px">
+          <div class="fld">
+            <label for="prosPrimaNota">Prima nota visibile (MIDI)</label>
+            <input type="text" id="prosPrimaNota" placeholder="vuoto = dedotta dai tasti">
+            <span class="hint">se il MIDI esce trasposto fissala qui (48 = C3, 60 = C4)</span>
+          </div>
+          <div class="fld">
+            <label for="prosGruppo2">Nota del gruppo dei 2 neri (MIDI)</label>
+            <input type="text" id="prosGruppo2" placeholder="61 = C#4">
+            <span class="hint">ancora la griglia al gruppo di tasti neri giusto</span>
+          </div>
+          <div class="fld">
+            <label for="prosFormato">Formato delle clip per nota</label>
+            <select id="prosFormato"><option value="mp4" selected>mp4 (H.264)</option><option value="jpeg">cartella di JPEG</option></select>
+          </div>
+          <div class="fld">
+            <label for="prosMaxSec">Durata analizzata (s)</label>
+            <input type="text" id="prosMaxSec" placeholder="tutto il video">
+          </div>
+          <div class="fld">
+            <label for="prosGiu">Soglia giù (0–1)</label>
+            <input type="text" id="prosGiu" placeholder="0.6">
+          </div>
+          <div class="fld">
+            <label for="prosSu">Soglia su (0–1)</label>
+            <input type="text" id="prosSu" placeholder="0.4">
+          </div>
+          <div class="fld">
+            <label for="prosFinestra">Finestra (frame, dispari)</label>
+            <input type="text" id="prosFinestra" placeholder="5">
+          </div>
+          <div class="fld">
+            <label for="prosFontNote">Grandezza scritte note</label>
+            <input type="text" id="prosFontNote" placeholder="0.5">
+            <span class="hint">0.2 = piccole · 0.5 = come ora · 1 = grandi</span>
+          </div>
+          <div class="fld">
+            <label for="prosSpessoreBordi">Spessore bordi tasti (px)</label>
+            <input type="text" id="prosSpessoreBordi" placeholder="2">
+            <span class="hint">0 = nessun bordo · 2 = come ora · 4 = spessi</span>
+          </div>
+        </div>
+        <div class="frm" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+          <div class="fld" style="grid-column:span 2">
+            <label style="flex-direction:row;display:flex;gap:6px;align-items:center;cursor:pointer">
+              <input type="checkbox" id="prosFiltroMani">
+              <b>filtro mani</b> — scarta le note che nessuna mano poteva premere
+            </label>
+            <span class="hint">le dita vengono cercate nel video (mediapipe) e una nota il cui tasto è
+              lontano da ogni polpastrello nei frame della pressione <b>non entra nel MIDI</b>:
+              così una mano a sinistra non può più far uscire note a destra</span>
+          </div>
+          <div class="fld">
+            <label for="prosRaggioMani">Distanza massima dito–tasto</label>
+            <input type="text" id="prosRaggioMani" placeholder="1.6">
+            <span class="hint">in larghezze di tasto bianco (1.6 = un tasto e mezzo di margine)</span>
+          </div>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="prosSenzaClip"> non scrivere le clip per nota</label>
+          <label><input type="checkbox" id="prosSenzaVideo"> non scrivere <code>griglia.mp4</code> (niente video con i tasti premuti)</label>
+          <label><input type="checkbox" id="prosSenzaScritte"> non scrivere i nomi delle note sui tasti</label>
+          <label><input type="checkbox" id="prosSenzaBordi"> non disegnare i bordi verdi e celesti dei tasti</label>
+        </div>
+        <div style="margin-top:8px;color:#5f6b7d;font-size:11.5px;line-height:1.6">
+          <b>Aspetto della griglia sui tasti</b> (bordi <b>verdi</b> = tasti bianchi, <b>celesti</b> = tasti
+          neri, e nomi delle note): qui sopra scegli se e quanto mostrarli in <code>griglia.mp4</code> e in
+          <code>prima_griglia.jpg</code>. Non cambiano la griglia né le note riconosciute, solo il disegno.
+        </div>
+        <div class="warnbox">
+          <b>Come funziona il motore prospettico.</b> La griglia dei tasti è ricostruita dalla sola
+          <i>geometria</i> della tastiera (profilo verticale dei tasti + posizione dei neri), quindi regge
+          le inquadrature oblique e <b>non usa né YOLO né mediapipe</b>. A ogni cambio di inquadratura la
+          griglia viene riagganciata da zero. Controllo visivo: <code>griglia.mp4</code>, dove ogni tasto
+          che il modello segna come premuto viene scurito (con lo sfondo ancora visibile) <b>solo nei frame
+          della pressione</b>. Le sagome valgono solo per questo video: caricandone un altro si cancellano.
+          Con la spunta <b>«elimina le esecuzioni precedenti»</b> a ogni nuova esecuzione sparisce per intero
+          la cartella della precedente (video di input, clip per nota, log): quello che serve è il MIDI,
+          il resto occupa solo spazio.
+        </div>
+      </div><!-- /gruppoProspettica -->
+
+
+      <div class="checks">
+        <label><input type="checkbox" id="normalizza" checked> normalizza con ffmpeg (.mov/HEVC/rotazione)</label>
+        <label><input type="checkbox" id="eliminaInput" checked> elimina il video caricato a fine elaborazione</label>
+        <label><input type="checkbox" id="eliminaPrec" checked> elimina le esecuzioni precedenti (tieni solo questa)</label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2><span class="n">3</span> Esecuzione</h2>
+      <div class="meta" style="margin-top:0">
+        <button class="btn primary" id="esegui" disabled>▶ Esegui la pipeline</button>
+        <button class="btn danger" id="annulla" disabled>■ Annulla</button>
+        <button class="btn ghost" id="pulisci" title="elimina i file temporanei di questa esecuzione">🗑 Pulisci</button>
+        <span id="statoTxt" class="mono" style="color:var(--text2)">in attesa di un video…</span>
+      </div>
+      <div id="progressWrap"><div id="progressBar"></div></div>
+      <div class="meta" id="runMeta"></div>
+      <div id="esitoBox"></div>
+    </section>
+  </div>
+
+  <div>
+    <section class="card">
+      <h2>Log della pipeline</h2>
+      <div class="meta" style="margin:0 0 8px">
+        <button class="btn sm ghost" id="copiaLog">copia log</button>
+        <span id="logCount" class="mono" style="color:var(--text2);font-size:11.5px"></span>
+      </div>
+      <div id="log"></div>
+    </section>
+
+    <section class="card">
+      <h2>Esecuzioni precedenti</h2>
+      <div class="meta" style="margin:0 0 8px">
+        <button class="btn sm ghost" id="eliminaTutte"
+                title="cancella le cartelle di tutte le esecuzioni concluse: video caricati, clip per nota, log e risultati">🗑 Elimina tutte</button>
+        <span id="runsInfo" class="mono" style="color:var(--text2);font-size:11.5px"></span>
+      </div>
+      <div class="runs" id="runs"><span style="color:var(--text2)">nessuna esecuzione</span></div>
+    </section>
+  </div>
+</div>
+
+<section class="card hidden" id="results">
+  <h2>Risultati</h2>
+  <div class="stats" id="stats"></div>
+
+  <div class="tabs">
+    <button class="tab on" data-pane="paneNote">📋 Note</button>
+    <button class="tab" data-pane="paneRoll">🎼 Piano roll e riproduzione</button>
+    <button class="tab" id="tabGriglia" data-pane="paneGriglia">🖼 Griglia sui tasti</button>
+    <button class="tab hidden" id="tabSagome" data-pane="paneSagome">🎹 Sagome per nota</button>
+    <button class="tab" id="tabDebug" data-pane="paneDebug">🎬 debug.mp4</button>
+    <button class="tab" data-pane="paneFile">💾 File e MIDI</button>
+  </div>
+
+  <div class="pane on" id="paneNote">
+    <div id="tabWrap"><table id="tabNote"><thead><tr>
+      <th>#</th><th>nota</th><th>MIDI</th><th>onset</th><th>offset</th><th>durata</th><th>vel</th><th>mano</th>
+    </tr></thead><tbody></tbody></table></div>
+    <div class="noteinfo" id="noteInfo"></div>
+  </div>
+
+  <div class="pane" id="paneSagome">
+    <div class="noteinfo" id="sagomeInfo"></div>
+    <div id="sagomeTasti" style="display:flex;flex-wrap:wrap;gap:2px;margin:10px 0"></div>
+    <div id="sagomeClip" class="mono" style="font-size:12px;color:var(--text2)">clicca una nota inquadrata per aprire la sua clip</div>
+    <video id="sagomeVideo" controls loop muted style="max-width:100%;max-height:320px;display:none"></video>
+  </div>
+
+  <div class="pane" id="paneRoll">
+    <div class="player">
+      <button class="playBtn" id="playBtn" disabled title="riproduci / pausa">▶</button>
+      <button class="btn sm" id="stopBtn" title="torna all'inizio">■</button>
+      <span class="clock" id="clock">0:00 / 0:00</span>
+      <div class="ctl"><span>strumento</span>
+        <select id="instr">
+          <option value="piano" selected>pianoforte</option>
+          <option value="epiano">piano elettrico</option>
+          <option value="organ">organo</option>
+          <option value="synth">synth</option>
+        </select></div>
+      <div class="ctl"><span>volume</span><input type="range" id="vol" min="0" max="1" step="0.01" value="0.75" style="width:110px"></div>
+      <div class="ctl"><span>battute (griglia)</span><input type="number" id="tempo" min="30" max="300" value="120" style="width:78px"></div>
+      <label class="checks" style="border:none;padding:0;margin:0"><input type="checkbox" id="loopChk"> loop</label>
+      <span class="mono" id="smfInfo" style="color:var(--text2);font-size:11.5px"></span>
+    </div>
+    <div class="rollWrap" style="margin-top:12px"><canvas id="roll"></canvas></div>
+    <div id="kbd"><canvas id="kbdCanvas"></canvas></div>
+    <div class="noteinfo">Suono sintetizzato in locale (Web Audio), nessun file audio scaricato:
+      il player <b>legge davvero <code>song.mid</code></b> (parser Standard MIDI File scritto in JS).</div>
+  </div>
+
+  <div class="pane" id="paneGriglia">
+    <video id="grigliaVid" class="hidden" controls loop muted playsinline preload="metadata"
+           style="max-width:100%;border-radius:9px;border:1px solid var(--border)"></video>
+    <div id="grigliaVidNota" class="mono hidden"
+         style="font-size:12px;color:var(--text2);margin:6px 0 10px"></div>
+    <img id="grigliaImg" class="hidden" style="max-width:100%;border-radius:9px;border:1px solid var(--border)">
+    <div class="noteinfo" id="grigliaInfo"></div>
+  </div>
+
+  <div class="pane" id="paneDebug">
+    <video id="debugVid" controls playsinline style="max-width:100%;border-radius:9px;border:1px solid var(--border)"></video>
+  </div>
+
+  <div class="pane" id="paneFile">
+    <div class="meta" style="margin-top:0">
+      <a class="btn" id="dlMidi" download="song.mid">⬇ scarica song.mid</a>
+      <a class="btn" id="dlJson" download="notes.json">⬇ scarica notes.json</a>
+      <a class="btn" id="dlPpan" download="notes_ppan.json">⬇ notes_ppan.json (grezzo PPAN)</a>
+      <a class="btn" id="dlGriglia" download="prima_griglia.jpg">⬇ prima_griglia.jpg</a>
+      <a class="btn hidden" id="dlGrigliaVid" download="griglia.mp4">⬇ griglia.mp4 (griglia su tutto il video)</a>
+      <a class="btn" id="dlDebug" download="debug.mp4">⬇ debug.mp4</a>
+    </div>
+    <div class="noteinfo" id="fileInfo"></div>
+    <div class="mono" id="hexMid" style="font-size:11px;color:var(--text2);white-space:pre-wrap;margin-top:8px"></div>
+  </div><!-- /paneFile -->
+</section><!-- /results -->
+<!-- ================== ADDESTRA IL MODELLO DEI TASTI ================== -->
+<section class="card" id="cardAddestra">
+  <h2>🎓 Addestra il modello dei tasti — dai tuoi video, senza terminale</h2>
+  <div class="noteinfo">
+    Il motore <b>prospettica</b> trova i tasti dalla geometria e decide «premuto» guardando come
+    cambia l'immagine del tasto. Qui la stessa decisione viene <b>imparata dai tuoi video</b>: a
+    ogni tasto si ritaglia la sua striscia e una rete impara a dire premuto / non premuto.
+    Carica <b>coppie video + MIDI</b> (con lo stesso nome) e premi <b>Addestra</b>.
+  </div>
+
+  <details class="gruppoFile" open>
+    <summary>📖 Come caricare i video — leggi prima: è la parte che decide il risultato</summary>
+    <div style="padding:10px 12px;font-size:12.5px;line-height:1.75;color:var(--text2)">
+      <ol style="margin-left:18px">
+        <li><b>Una ripresa per brano</b>, da 15 a 60 secondi (30-60 danno più campioni e un modello
+        più stabile), con la camera <b>ferma</b>
+        (treppiede, appoggio, telefono bloccato): se la camera si muove la griglia insegue il
+        movimento e la rete impara il rumore invece dei tasti.</li>
+        <li><b>Tastiera tutta in campo</b> e non piccola: dall'alto o di fronte, senza spartito
+        davanti, senza tagliare i bordi. Più tasti restano inquadrati, più dati si ottengono.</li>
+        <li><b>Mani sempre visibili</b> nell'inquadratura: le dita servono al filtro mani e alle
+        etichette, e la rete impara anche a riconoscere le note che le mani <i>non</i> potevano
+        aver premuto.</li>
+        <li><b>Suona e salva il MIDI di <i>quella</i> esecuzione</b>: il file <code>.mid</code>
+        scritto <b>mentre suoni</b> — pianoforte digitale collegato via USB-MIDI, o il DAW/programma
+        che registra la tua tastiera. Deve essere <i>la stessa</i> performance che si vede nel video,
+        nota per nota. Video e MIDI devono partire nello stesso istante: se puoi, suona una
+        <b>nota isolata nel primo secondo</b>, così l'allineamento si controlla a occhio e il
+        software stima da solo il ritardo (<code>ritardo auto</code>). <b>Non usare i
+        <code>song.mid</code> scritti dai motori di trascrizione</b> del sito: sono le <i>loro</i>
+        previsioni, non quello che è stato suonato — usarli come verità insegna alla rete a copiare
+        anche i loro errori, e il log te lo segnala.</li>
+        <li><b>Un pezzo = due file con lo stesso nome</b>: <code>brano1.mp4</code> +
+        <code>brano1.mid</code>. Servono <b>almeno 3-4 brani diversi</b>, meglio <b>5-10</b>: uno
+        (o più) resta fuori dall'addestramento e serve a <b>misurare</b> quanto vale il modello (con
+        un solo brano non esiste nessuna misura onesta: lo dice il log).</li>
+        <li>Luci stabili, niente zoom, nessuna mano che entra da fuori inquadratura: tutto quello
+        che si vede nei video è quello che la rete impara.</li>
+      </ol>
+      <b>Riprese larghe (tastiera lontana):</b> prima di addestrare passa dal
+      <a href="/prepara" target="_blank" rel="noopener">passo 0 — prepara il video</a>: ritaglia
+      il fotogramma sulla tastiera (un esempio del dataset PianoVAM oppure un tuo video), ti fa
+      vedere il prima e il dopo e ti dice se la griglia trovata si può usare. Su una ripresa larga
+      la griglia dei tasti si aggancia alla fascia sbagliata e il corso addestra su tasti inventati.
+      <br><br>
+      <b>Allineamento video ↔ MIDI, controllato a occhio, brano per brano:</b> dopo aver scelto i
+      file premi <b>🔎 Controlla l'allineamento</b>: il sito calcola griglia e dita di ogni brano
+      <i>senza addestrare</i> e disegna su alcuni frame veri i tasti che il MIDI dice premuti, in
+      rosso. Se i tasti rossi stanno sotto le dita, quel brano è allineato; se sono spostati, scrivi
+      nel campo accanto a quel pezzo lo <b>scostamento in secondi</b> (<b>positivo = il video è in
+      ritardo sul MIDI</b>, cioè le note arrivano prima di quello che si vede) e ripremi
+      <b>Controlla</b>, finché tutti i brani combaciano. Poi premi <b>🎓 Addestra</b>: griglia e
+      dita già calcolate si riusano, quindi si rifà solo il dataset (un minuto) e non la parte
+      lenta. Lasciando il campo vuoto il ritardo lo stima da solo (<code>ritardo auto</code>);
+      log e <code>modello.json</code> scrivono per ogni brano il ritardo usato davvero e se era
+      scelto a mano o stimato.
+      <b>Quali brani servono:</b> brani suonati <b>davvero</b> (note vere, non le previsioni di un
+      motore) e con i tasti premuti <b>vicini alle dita</b>. Il raggio non si indovina: con
+      <code>auto</code> il software lo misura e lo scrive nel log (<code>raggio scelto da 'auto':
+      … larghezze di tasto</code>), e <code>3_addestra.py</code> lo rilegge dal dataset, così
+      addestramento e inferenza guardano gli stessi tasti. Nel log guarda anche <code>premuti
+      ESCLUSI perche' lontani dalle mani</code>: con <code>auto</code> sono circa il 10% per
+      costruzione; se è molto di più — o se compare l'avviso <code>E' troppo (griglia o mani.json
+      sospetti)</code> — la tastiera è inquadrata piccola o le mani stanno lontane dai tasti premuti:
+      avvicina la camera. Un brano così resta buono per misurare la <b>griglia</b>, ma insegna poco
+      sulle note.
+    </div>
+  </details>
+
+  <div class="meta" style="margin-top:12px">
+    <input type="file" id="fileCorso" multiple accept="video/*,.mp4,.mov,.mkv,.mid,.midi" class="hidden">
+    <button class="btn" id="scegliCorso" type="button">📼 Scegli i video + i MIDI…</button>
+    <button class="btn ghost sm" id="pulisciCorso" type="button">↺ svuota</button>
+    <span id="corsoInfo" style="color:var(--text2)">nessun file scelto</span>
+  </div>
+  <div id="listaPezzi" style="margin-top:8px"></div>
+  <div class="noteinfo" id="hintAllinea" style="margin-top:8px;display:none">
+    <b>Scostamento MIDI</b> (secondi, nel campo accanto a ogni pezzo; vuoto = lo stima da solo):
+    <b>positivo = il video è in ritardo sul MIDI</b>, cioè le note del MIDI arrivano <i>prima</i> di
+    quello che si vede nel video. Con <b>🔎 Controlla l'allineamento</b> (senza addestrare) il sito
+    disegna sui frame veri i tasti che il MIDI dice premuti: se non stanno sotto le dita, cambia il
+    numero di quel pezzo e riprova — è il modo per far combaciare il video con l'inizio della prima
+    nota senza indovinare.
+  </div>
+
+  <div class="frm" style="margin-top:12px">
+    <div class="fld">
+      <label for="corsoEpoche">Epoche di addestramento</label>
+      <input type="number" id="corsoEpoche" min="1" max="200" step="1" value="15">
+      <span class="hint">15 va bene per iniziare; 40-60 quando i brani sono molti</span>
+    </div>
+    <div class="fld">
+      <label for="corsoRaggio">Raggio dito–tasto (larghezze di tasto)</label>
+      <input type="text" id="corsoRaggio" value="auto">
+      <span class="hint"><code>auto</code> è la scelta giusta: misura quanto stanno lontani dalle
+        dita i tasti premuti del tuo brano e guarda il 90% più vicino. Con un numero fisso (2.5)
+        oltre metà dei tasti premuti restava fuori: il modello non poteva impararli. Guarda il log:
+        dice il raggio misurato pezzo per pezzo</span>
+    </div>
+    <div class="fld">
+      <label for="corsoPneg">Negativi tenuti (&ndash;&ndash;p-neg)</label>
+      <input type="text" id="corsoPneg" value="0.4">
+      <span class="hint">0.4 = 40% dei «non premuto» (i premuti si tengono tutti)</span>
+    </div>
+    <div class="fld">
+      <label for="corsoRitardo">Ritardo MIDI–video (tutti i brani)</label>
+      <input type="text" id="corsoRitardo" value="auto">
+      <span class="hint">«auto» lo stima e, se la stima non è affidabile, <b>non la applica</b> e lo
+        scrive nel log. Vale per tutti i brani: se un brano ha bisogno di un valore suo, scrivilo
+        nel campo accanto a quel pezzo nell'elenco qui sopra e controllalo con
+        <b>🔎 Controlla l'allineamento (senza addestrare)</b></span>
+    </div>
+    <div class="fld">
+      <label for="corsoPrimaNota">Prima nota visibile (MIDI)</label>
+      <input type="text" id="corsoPrimaNota" placeholder="vuoto = dedotta dai tasti">
+      <span class="hint">serve solo se il MIDI di riferimento è trasposto</span>
+    </div>
+    <div class="fld">
+      <label for="corsoVal">Brani di verifica (nomi, virgole)</label>
+      <input type="text" id="corsoVal" placeholder="vuoto = l'ultimo pezzo">
+      <span class="hint">restano fuori dall'addestramento: la misura che esce è su video mai visti</span>
+    </div>
+  </div>
+  <div class="checks">
+    <label><input type="checkbox" id="corsoInferenza" checked> alla fine prova l'inferenza sull'ultimo pezzo</label>
+    <label><input type="checkbox" id="corsoPulisci"> cancella le esecuzioni dei video precedenti (libera disco)</label>
+  </div>
+
+  <div class="meta" style="margin-top:12px">
+    <button class="btn primary" id="avviaAddestra" type="button">🎓 Addestra il modello</button>
+    <button class="btn" id="controllaAllinea" type="button">🔎 Controlla l'allineamento (senza addestrare)</button>
+    <a class="btn" style="text-decoration:none" href="/prepara" target="_blank" rel="noopener"
+       title="Ritaglia un video sulla tastiera (un esempio del dataset PianoVAM oppure un tuo video):
+guardi il prima e il dopo e decidi se addestrarlo. Serve per le riprese larghe, dove la griglia
+dei tasti si aggancia alla fascia sbagliata.">🎬 Passo 0: prepara il video (solo tastiera)</a>
+    <button class="btn danger sm" id="annullaAddestra" type="button" disabled>✕ annulla</button>
+    <span id="corsoFase" style="color:var(--text2)">pronto</span>
+  </div>
+  <div id="progressoCorso" style="display:none;height:7px;background:var(--surface2);border-radius:5px;overflow:hidden;margin-top:10px">
+    <div id="progressoCorsoBar" style="height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2))"></div>
+  </div>
+  <div class="logbox" id="logCorso"><div style="color:var(--text2)">Il log dell'addestramento
+    compare qui: griglia dei tasti, dita, dataset, epoche, validazione.</div></div>
+  <div id="esitoCorso"></div>
+  <div id="modelliCorso" style="margin-top:14px"></div>
+</section>
+
+<!-- ================== FILE E MATERIALE DEL PROGETTO ================== -->
+<section class="card" id="cardFile">
+  <h2>📁 File e materiale del progetto — tutti i collegamenti</h2>
+  <div class="noteinfo">
+    Tutto quello che c'è nel progetto, come collegamento diretto: i <b>documenti</b> e i brief, i
+    <b>pacchetti .zip</b> pronti da mandare, il materiale per Claude (<code>per_claude/</code>), i
+    risultati della <b>griglia a 88 tasti</b>, le immagini di prova, i video e gli script. Si
+    aprono nel browser (i video si guardano qui dentro) oppure si scaricano.
+  </div>
+  <div class="meta" style="margin:0 0 10px">
+    <button class="btn sm ghost" id="ricaricaFile" type="button">↻ ricarica l'elenco</button>
+    <span id="materialeInfo" class="mono" style="color:var(--text2);font-size:11.5px">carico…</span>
+  </div>
+  <div id="fileGruppi"></div>
+</section>
+</main>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+let fileVideo = null, objectUrl = null, jobId = null, jobCorrente = null;
+let t0 = 0, timerPoll = null, timerTick = null, nLog = 0, pesiOk = true;
+let ppanOk = false;          // motore PPAN disponibile (pesi + script + ponte)
+let prosOk = true;           // motore prospettica disponibile (motore_prospettica.py + griglia)
+
+const fmtT = (s) => { s = Math.max(0, s || 0); const m = Math.floor(s / 60);
+  return m + ':' + String(Math.floor(s % 60)).padStart(2, '0'); };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const MB = (b) => (b / 1048576).toFixed(1);
+const statoMsg = (s) => { $('statoTxt').textContent = s; };
+const elapsed = () => t0 ? ((Date.now() - t0) / 1000) : 0;
+
+function log(msg, tipo) {
+  const el = $('log');
+  const div = document.createElement('div');
+  const s = String(msg == null ? '' : msg);
+  let cls = '';
+  if (tipo === 'e' || /^\[ERRORE\]|Traceback|Exception|eccezione|^Error/i.test(s)) cls = 'e';
+  else if (tipo === 'w' || /^\[AVVISO\]/.test(s)) cls = 'w';
+  else if (/^\[web\]/.test(s)) cls = 'web';
+  else if (/^\[griglia\]|^\[video\]|^===|^eventi nota|^estensione/.test(s)) cls = 'g';
+  div.innerHTML = '<span class="t">' + new Date().toLocaleTimeString('it-IT', {hour12:false}) +
+                  '</span><span class="' + cls + '">' + esc(s) + '</span>';
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+  nLog++;
+  $('logCount').textContent = nLog + ' righe';
+}
+
+async function caricaStato() {
+  try {
+    const r = await fetch('/api/stato');
+    const d = await r.json();
+    $('pillServer').className = 'pill ok';
+    $('pillServer').innerHTML = 'server: <b>attivo</b>';
+    $('pillPython').className = 'pill ' + (d.python_progetto ? 'ok' : 'no');
+    $('pillPython').innerHTML = 'pipeline: <b>' + esc(d.python.split('/').slice(-2).join('/')) + '</b>';
+    $('pillFfmpeg').className = 'pill ' + (d.ffmpeg ? 'ok' : 'no');
+    $('pillFfmpeg').innerHTML = 'ffmpeg: <b>' + (d.ffmpeg ? 'ok' : 'assente') + '</b>';
+    $('pillDisk').className = 'pill ' + (d.spazio.libero_gb > 2 ? 'ok' : 'no');
+    $('pillDisk').innerHTML = 'disco: <b>' + d.spazio.libero_gb + ' GB</b>';
+    popolaModelli(d.pesi_yolo);
+    aggiornaPpan(d.ppan);
+    aggiornaProspettica(d.prospettica);
+    if (!d.modello_mani) log('hand_landmarker.task assente in weights/: il ramo mani non partira', 'w');
+    if (!d.python_progetto)
+      log('nessun venv del progetto trovato: la pipeline usara ' + d.python +
+          '. Senza mediapipe il ramo mani fallira (usa “senza mani” per provare la griglia).', 'w');
+  } catch (e) {
+    $('pillServer').className = 'pill no';
+    $('pillServer').innerHTML = 'server: <b>irraggiungibile</b>';
+    log('server non raggiungibile: avvia `python3 pipeline_web.py`', 'e');
+  }
+}
+
+// ------------------------------------------------------ scelta del video
+function impostaFile(f) {
+  if (!f) return;
+  fileVideo = f;
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  objectUrl = URL.createObjectURL(f);
+  const v = $('preview');
+  v.src = objectUrl;
+  v.style.display = 'block';
+  v.onloadedmetadata = () => {
+    const dur = isFinite(v.duration) ? v.duration : 0;
+    const extra = dur > 0 ? '<span>durata: <b>' + dur.toFixed(1) + ' s</b></span>' +
+                            '<span>risoluzione: <b>' + v.videoWidth + '×' + v.videoHeight + '</b></span>' : '';
+    $('fileMeta').innerHTML = '<span><b>' + esc(f.name) + '</b></span><span>' + MB(f.size) + ' MB</span>' + extra;
+    posizionaTela();
+  };
+  $('dropbox').style.display = 'none';
+  $('stage').classList.add('hasvideo');
+  $('fileMeta').innerHTML = '<span><b>' + esc(f.name) + '</b></span><span>' + MB(f.size) + ' MB</span>';
+  if (punti.length) {                     // gli angoli valevano per il video precedente
+    punti = [];
+    $('ppanQuad').value = '';
+    log('[web] nuovo video: angoli del ritaglio PPAN azzerati', 'w');
+  }
+  aggiornaPulsanti();
+  posizionaTela();
+  statoMsg('video pronto');
+}
+
+const stage = $('stage');
+stage.addEventListener('dragover', (e) => { e.preventDefault(); stage.classList.add('dragover'); });
+stage.addEventListener('dragleave', () => stage.classList.remove('dragover'));
+stage.addEventListener('drop', (e) => {
+  e.preventDefault();
+  stage.classList.remove('dragover');
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) impostaFile(f);
+});
+$('scegli').addEventListener('click', () => $('file').click());
+$('stage').addEventListener('click', (e) => { if (!fileVideo) $('file').click(); });
+$('file').addEventListener('change', (e) => impostaFile(e.target.files[0]));
+
+// ------------------------------------------- disponibilità dei modelli
+const ETICHETTA_MODELLO = {yolov8m: 'yolov8m (veloce)', yolov8l: 'yolov8l (consigliato)',
+                           yolov8x: 'yolov8x (massimo)'};
+const WGET = 'wget https://github.com/ultralytics/assets/releases/download/v8.3.0/';
+
+function popolaModelli(pesi) {
+  if (!pesi) return;
+  const sel = $('modello');
+  const ordine = ['yolov8l', 'yolov8m', 'yolov8x'];
+  sel.innerHTML = '';
+  let disponibili = 0, scelto = '';
+  for (const nome of ordine) {
+    const p = pesi[nome] || {esiste: false, valido: false, mb: 0};
+    const op = document.createElement('option');
+    op.value = nome;
+    if (p.valido) {
+      op.textContent = ETICHETTA_MODELLO[nome] + ' · ' + p.mb + ' MB';
+      disponibili++;
+      if (!scelto) scelto = nome;
+    } else {
+      op.textContent = ETICHETTA_MODELLO[nome] + ' — ' + (p.esiste ? 'file corrotto' : 'assente');
+      op.disabled = true;
+      log('pesi ' + nome + ': ' + (p.esiste ? 'file corrotto o troncato' : 'file assente') +
+          ' (' + p.mb + ' MB). Per riscaricarli: ' + WGET + nome + '-oiv7.pt -P weights/',
+          p.esiste ? 'e' : 'w');
+    }
+    sel.appendChild(op);
+  }
+  pesiOk = !!scelto;
+  if (scelto) {
+    sel.value = scelto;
+    $('pillPesi').className = 'pill ok';
+    $('pillPesi').innerHTML = 'pesi: <b>' + disponibili + '/' + ordine.length + ' ok</b>';
+  } else {
+    $('pillPesi').className = 'pill no';
+    $('pillPesi').innerHTML = 'pesi: <b>nessuno utilizzabile</b>';
+    aggiornaPulsanti();
+    $('esitoBox').innerHTML = '<div class="errbox">✘ Nessun modello YOLO utilizzabile in ' +
+      '<code>weights/</code>: scarica almeno <code>yolov8l-oiv7.pt</code> con il comando ' +
+      'indicato nel log.</div>';
+  }
+}
+
+// ------------------------------------------------ motore PPAN (secondo motore)
+function motoreScelto() { return ($('motore').value || 'prospettica').toLowerCase(); }
+
+function aggiornaPulsanti() {
+  // il pulsante dipende dal motore: la pipeline vuole i pesi YOLO, PPAN i suoi
+  const m = motoreScelto();
+  const pronto = m === 'ppan' ? ppanOk
+    : (m === 'prospettica' ? prosOk
+       : (m === 'calibrato' ? (pesiOk || !!$('ppanQuad').value) : pesiOk));
+  $('esegui').disabled = !fileVideo || !pronto;
+}
+
+function aggiornaPpan(p) {
+  if (!p) return;
+  ppanOk = !!p.pronto;
+  $('pillPpan').className = 'pill ' + (ppanOk ? 'ok' : 'no');
+  $('pillPpan').innerHTML = 'PPAN: <b>' + (ppanOk ? 'pronto · ' + p.pesi_mb + ' MB' : 'non disponibile') + '</b>';
+  $('ppanDir').value = p.dir || '';
+  const op = $('motore').querySelector('option[value="ppan"]');
+  op.disabled = !ppanOk;
+  op.textContent = 'PPAN — “Pay Attention to the Keys” (rete pretrainata dal video)' +
+                   (ppanOk ? '' : ' — non disponibile');
+  if (ppanOk) {
+    log('[web] motore PPAN pronto: pesi ' + p.pesi_mb + ' MB in ' + p.dir +
+        ' (' + (p.interprete_venv ? 'venv dedicato' : 'interprete della pipeline') + ')');
+  } else {
+    log('motore PPAN non disponibile in ' + (p.dir || '?') + ': servono ppan_infer.py, ' +
+        'weights/pytorch_model.bin, weights/config.json e ppan_bridge.py nella cartella del ' +
+        'progetto PPAN (PianoviVision-PPAN).', 'w');
+  }
+  aggiornaMotore();
+}
+
+function aggiornaProspettica(ok) {
+  prosOk = ok !== false;                 // server vecchio: campo assente => motore presente
+  const op = $('motore').querySelector('option[value="prospettica"]');
+  if (op) {
+    op.disabled = !prosOk;
+    op.textContent = 'prospettica — griglia geometrica dei tasti (niente YOLO, niente dita)' +
+                     (prosOk ? '' : ' — non disponibile');
+  }
+  if (!prosOk)
+    log('motore prospettica non disponibile: servono motore_prospettica.py e ' +
+        'griglia_prospettica.py nella cartella del progetto.', 'w');
+  aggiornaMotore();
+}
+
+function aggiornaMotore() {
+  const m = motoreScelto();
+  const ppan = m === 'ppan';
+  const cal = m === 'calibrato';
+  const pros = m === 'prospettica';
+  $('gruppoPipeline').classList.toggle('hidden', ppan || cal || pros);
+  $('gruppoPpan').classList.toggle('hidden', !ppan);
+  $('gruppoCalibrato').classList.toggle('hidden', !cal);
+  $('gruppoProspettica').classList.toggle('hidden', !pros);
+  $('editorAngoli').classList.toggle('hidden', !(ppan || cal));
+  $('esegui').textContent = ppan ? '▶ Analizza con PPAN'
+    : (cal ? '▶ Calcola le sagome e trascrivi'
+           : (pros ? '▶ Stima la griglia e trascrivi' : '▶ Esegui la pipeline'));
+  $('tabGriglia').innerHTML = ppan ? '🖼 Ritaglio usato da PPAN' : '🖼 Griglia sui tasti';
+  $('motoreHint').innerHTML = ppan
+    ? 'PPAN ritaglia la tastiera e predice il piano roll: non usa le dita, regge le inquadrature oblique.'
+    : (cal ? 'calibrato: riquadro per nota in ogni frame, una clip per nota, ottava dichiarata.'
+           : (pros ? 'prospettica: la griglia nasce dalla geometria dei tasti, senza YOLO né dita; ai cambi di inquadratura viene rifatta da zero.'
+                   : 'pipeline: YOLO trova la tastiera, mediapipe segue le dita; ‘prima nota’ corregge l’ottava.'));
+  if (!ppan && !cal) disattivaEditor();
+  aggiornaPulsanti();
+}
+
+// ---------------------------------- editor dei 4 angoli (per il motore PPAN)
+let punti = [];                  // angoli in pixel del video originale
+let editorOn = false, giu = null;
+const ETICHETTE = ['alto-sx', 'alto-dx', 'basso-dx', 'basso-sx'];
+
+const tela = () => $('quadCanvas');
+
+function scalaTela() {           // pixel del video per pixel CSS della tela
+  const c = tela();
+  const larghezza = parseFloat(c.style.width) || 0;
+  return ($('preview').videoWidth && larghezza) ? $('preview').videoWidth / larghezza : 1;
+}
+
+function posizionaTela() {
+  const v = $('preview'), c = tela();
+  if (!v.videoWidth) return;
+  const rv = v.getBoundingClientRect(), rs = $('stage').getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  c.style.left = (rv.left - rs.left) + 'px';
+  c.style.top = (rv.top - rs.top) + 'px';
+  c.style.width = rv.width + 'px';
+  c.style.height = rv.height + 'px';
+  c.width = Math.max(1, Math.round(rv.width * dpr));
+  c.height = Math.max(1, Math.round(rv.height * dpr));
+  ridisegna();
+}
+
+function ordinaQuad(p) {
+  // ordine ciclico attorno al centro, poi si parte dall'angolo più in alto a sinistra:
+  // PPAN vuole alto-sx, alto-dx, basso-dx, basso-sx (altrimenti la prospettiva si ribalta)
+  const cx = p.reduce((s, q) => s + q[0], 0) / p.length;
+  const cy = p.reduce((s, q) => s + q[1], 0) / p.length;
+  const g = p.slice().sort((a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx));
+  let primo = 0;
+  g.forEach((q, k) => { if (q[0] + q[1] < g[primo][0] + g[primo][1]) primo = k; });
+  return g.slice(primo).concat(g.slice(0, primo));
+}
+
+function ridisegna(riordina) {
+  const c = tela(), ctx = c.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  if (riordina !== false && punti.length === 4) punti = ordinaQuad(punti);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, c.width, c.height);
+  const s = 1 / scalaTela();     // pixel CSS per pixel del video
+  const cs = punti.map(([x, y]) => [x * s, y * s]);
+  if (cs.length > 1) {
+    ctx.beginPath();
+    ctx.moveTo(cs[0][0], cs[0][1]);
+    for (let i = 1; i < cs.length; i++) ctx.lineTo(cs[i][0], cs[i][1]);
+    if (cs.length === 4) {
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0,230,168,.14)';
+      ctx.fill();
+    }
+    ctx.strokeStyle = '#00e6a8'; ctx.lineWidth = 2; ctx.stroke();
+  }
+  cs.forEach(([x, y], i) => {
+    ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffd166'; ctx.fill();
+    ctx.fillStyle = '#0a0a0f'; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(String(i + 1), x, y + 3.5);
+    if (cs.length === 4) {
+      ctx.fillStyle = '#ffd166'; ctx.font = '600 11px system-ui'; ctx.textAlign = 'left';
+      ctx.fillText(ETICHETTE[i], x + 9, y + 4);
+    }
+  });
+  salvaQuad();
+}
+
+function salvaQuad() {
+  const completo = punti.length === 4;
+  $('ppanQuad').value = completo ? ordinaQuad(punti).map(([x, y]) => x + ',' + y).join(' ') : '';
+  $('quadTxt').textContent = completo
+    ? '4 angoli: ' + $('ppanQuad').value
+    : (punti.length ? 'angoli segnati: ' + punti.length + '/4 — continua a cliccare sulla tastiera'
+                    : (editorOn ? 'clicca i 4 angoli della tastiera (poi trascinali per correggerli)'
+                                : 'ritaglio: automatico (PPAN trova la tastiera)'));
+  aggiornaPulsanti();
+}
+
+function pixelVideo(ev) {
+  const v = $('preview'), r = v.getBoundingClientRect();
+  const k = v.videoWidth ? v.videoWidth / r.width : 1;
+  return [Math.round(Math.max(0, Math.min(v.videoWidth - 1, (ev.clientX - r.left) * k))),
+          Math.round(Math.max(0, Math.min(v.videoHeight - 1, (ev.clientY - r.top) * k)))];
+}
+
+function attivaEditor(on) {
+  if (on && !fileVideo) { log('[web] carica prima un video, poi segna gli angoli', 'w'); return; }
+  editorOn = on;
+  $('stage').classList.toggle('hasegni', on);
+  $('btnQuad').textContent = on ? '✔ Fine' : '🎯 Segna i 4 angoli sul video';
+  if (on) {
+    posizionaTela();
+    log('[web] clicca i 4 angoli della tastiera sul video: l’ordine viene sistemato da solo');
+  }
+  ridisegna();
+}
+
+function disattivaEditor() {
+  editorOn = false;
+  $('stage').classList.remove('hasegni');
+  $('btnQuad').textContent = '🎯 Segna i 4 angoli sul video';
+}
+
+tela().addEventListener('pointerdown', (ev) => {
+  if (!editorOn) return;
+  const [x, y] = pixelVideo(ev);
+  const soglia = 12 * scalaTela();
+  const k = punti.findIndex(([px, py]) => Math.hypot(px - x, py - y) <= soglia);
+  giu = {k};
+  if (k >= 0) { tela().setPointerCapture(ev.pointerId); ev.preventDefault(); }
+});
+tela().addEventListener('pointermove', (ev) => {
+  if (!editorOn || !giu || giu.k < 0) return;
+  punti[giu.k] = pixelVideo(ev);
+  ridisegna(false);
+});
+tela().addEventListener('pointerup', (ev) => {
+  if (!editorOn || !giu) return;
+  const trascinato = giu.k >= 0;
+  giu = null;
+  if (trascinato) { ridisegna(); return; }
+  if (punti.length >= 4) punti = [];                 // un 5° clic ricomincia
+  punti.push(pixelVideo(ev));
+  ridisegna();
+  if (punti.length === 4) log('[web] 4 angoli registrati: ' + $('ppanQuad').value);
+});
+$('btnQuad').addEventListener('click', () => attivaEditor(!editorOn));
+$('btnQuadAuto').addEventListener('click', () => {
+  punti = [];
+  disattivaEditor();
+  ridisegna();
+  log('[web] ritaglio PPAN: automatico (nessun angolo passato al modello)');
+});
+$('motore').addEventListener('change', aggiornaMotore);
+if (window.ResizeObserver) new ResizeObserver(() => { if ($('preview').videoWidth) posizionaTela(); }).observe($('preview'));
+window.addEventListener('resize', () => { if ($('preview').videoWidth) posizionaTela(); });
+aggiornaMotore();
+</script>
+
+<script>
+// --------------------------------------------------- avvio e avanzamento
+function avviaTimer() {
+  t0 = Date.now();
+  clearInterval(timerTick);
+  timerTick = setInterval(() => {
+    if ($('statoTxt').textContent.startsWith('in corso') ||
+        $('statoTxt').textContent.indexOf('caricamento') >= 0)
+      statoMsg($('statoTxt').textContent.replace(/\(.*\)/, '') + '(' + elapsed().toFixed(0) + ' s)');
+  }, 1000);
+}
+function fineTimer() { clearInterval(timerTick); timerTick = null; }
+
+function setProgresso(frazione) {
+  const b = $('progressBar');
+  if (frazione === null || frazione === undefined) {
+    b.classList.add('indet');
+    b.style.width = '';
+  } else {
+    b.classList.remove('indet');
+    b.style.width = Math.max(0, Math.min(1, frazione)) * 100 + '%';
+  }
+}
+
+function renderLog(righe) {
+  if (!righe) return;
+  if (righe.length < nLog) { $('log').innerHTML = ''; nLog = 0; }
+  for (let i = nLog; i < righe.length; i++) log(righe[i].s);
+}
+
+function renderMeta(d) {
+  const m = d.meta || {};
+  const pezzi = [];
+  if (m.larghezza) pezzi.push('video ' + m.larghezza + '×' + m.altezza);
+  if (m.fps) pezzi.push('fps ' + m.fps.toFixed(3));
+  if (m.frame_totali) pezzi.push(m.frame_totali + ' frame nel file');
+  if (m.passo) pezzi.push('passo ' + m.passo);
+  if (m.ffmpeg) pezzi.push('ffmpeg: ' + esc(m.ffmpeg));
+  if (m.motore === 'ppan') {
+    pezzi.push('motore PPAN' + (m.device ? ' (' + m.device + ')' : ''));
+    if (m.ppan_tastiera && m.ppan_tastiera.n_tasti)
+      pezzi.push('tastiera ' + m.ppan_tastiera.n_tasti + ' tasti da ' +
+                 nomeNota(m.ppan_tastiera.prima_nota));
+    if (m.crop) pezzi.push('striscia ' + esc(m.crop));
+  }
+  if (m.prima_nota !== undefined)
+    pezzi.push('tastiera stimata ' + nomeNota(m.prima_nota) + '–' + nomeNota(m.ultima_nota) +
+               ' (' + m.prima_nota + '–' + m.ultima_nota + ')');
+  $('runMeta').innerHTML = pezzi.map((p) => '<span>' + p + '</span>').join('');
+}
+
+function esito(tipo, d) {
+  const classe = tipo === 'ok' ? 'okbox' : (tipo === 'warn' ? 'warnbox' : 'errbox');
+  let html = '';
+  if (tipo === 'ok') {
+    const r = d.riepilogo || {};
+    html = '✔ Completato in ' + elapsed().toFixed(0) + ' s · ' + (d.meta && d.meta.frame_totali || '?') +
+           ' frame nel file · <b>' + (r.n_eventi || 0) + ' eventi nota</b>';
+    if (!r.n_eventi) {
+      html += '<br>Il MIDI è valido ma <b>vuoto</b>: ' + ((d.meta || {}).motore === 'ppan'
+        ? 'PPAN non ha riconosciuto pressioni. Apri la scheda <b>«Ritaglio usato da PPAN»</b>: se la ' +
+          'striscia non contiene la tastiera (o la contiene storta), segna i 4 angoli e rilancia; poi ' +
+          'prova ad abbassare la soglia onset.'
+        : 'nel video non è stata riconosciuta nessuna pressione. Prova con <b>--senza-mani</b> per ' +
+          'verificare la griglia, o abbassa la soglia di confidenza.');
+    }
+    if ((d.meta || {}).avviso)
+      html += '<br><span style="color:var(--warn)">⚠ ' + esc(d.meta.avviso) + '</span>';
+    if ((d.meta || {}).motore !== 'ppan' && ppanOk)
+      html += '<br><button class="btn sm" onclick="riprovaConPpan()">🎯 Riprova questo video ' +
+              'con PPAN (rete pretrainata)</button>';
+  } else if (tipo === 'warn') {
+    html = '■ Esecuzione annullata' + (d.input_eliminato ? ' (video di input eliminato)' : '');
+  } else {
+    html = '✘ Errore: ' + esc(d.errore || 'vedi il log');
+  }
+  if (d.codice_uscita !== undefined && d.codice_uscita !== null && tipo !== 'ok')
+    html += '<br><span class="mono">codice di uscita: ' + d.codice_uscita + '</span>';
+  $('esitoBox').innerHTML = '<div class="' + classe + '">' + html + '</div>';
+}
+
+function riprovaConPpan() {
+  if (!ppanOk) { log('[web] motore PPAN non disponibile', 'w'); return; }
+  if (!fileVideo) { log('[web] il video non è più in memoria: ricaricalo', 'w'); return; }
+  $('motore').value = 'ppan';
+  aggiornaMotore();
+  log('[web] rilancio lo stesso video con PPAN');
+  esegui();
+}
+
+async function esegui() {
+  if (!fileVideo) return;
+  const ppan = motoreScelto() === 'ppan';
+  if (ppan && !ppanOk) {
+    $('esitoBox').innerHTML = '<div class="errbox">✘ Motore PPAN non disponibile: controlla la ' +
+      'cartella PPAN (<code>ppan_infer.py</code> + <code>weights/</code>) oppure passa alla pipeline.</div>';
+    log('[web] motore PPAN non disponibile', 'e');
+    return;
+  }
+  const fd = new FormData();
+  fd.append('video', fileVideo, fileVideo.name);
+  const testi = {motore: 'motore', modello: 'modello', conf: 'conf', fps_max: 'fpsMax',
+                 tracker: 'tracker', redetect: 'redetect', prima_nota: 'primaNota',
+                 ultima_nota: 'ultimaNota', n_ottave: 'nOttave', limite: 'limite',
+                 ppan_dir: 'ppanDir', ppan_quad: 'ppanQuad', ppan_start: 'ppanStart',
+                 ppan_max_seconds: 'ppanMaxSec', ppan_batch: 'ppanBatch',
+                 ppan_crop_frames: 'ppanCropFrames', ppan_min_note: 'ppanMinNote',
+                 ppan_thr_onset: 'ppanThrOnset', ppan_thr_frame: 'ppanThrFrame',
+                 ppan_sigma_onsets: 'ppanSigmaOnset', ppan_sigma_frames: 'ppanSigmaFrame',
+                 cal_prima_nota: 'calPrimaNota', cal_formato: 'calFormato', cal_max_sec: 'calMaxSec',
+                 cal_giu: 'calGiu', cal_su: 'calSu', cal_finestra: 'calFinestra',
+                 pros_prima_nota: 'prosPrimaNota', pros_gruppo2: 'prosGruppo2',
+                 pros_formato: 'prosFormato', pros_max_sec: 'prosMaxSec',
+                 pros_giu: 'prosGiu', pros_su: 'prosSu', pros_finestra: 'prosFinestra',
+                 pros_font_note: 'prosFontNote', pros_spessore_bordi: 'prosSpessoreBordi',
+                 pros_raggio_mani: 'prosRaggioMani'};
+  for (const k in testi) fd.append(k, ($(testi[k]).value || '').trim());
+  const flag = {senza_mani: 'senzaMani', debug_video: 'debugVideo', normalizza: 'normalizza',
+                elimina_input: 'eliminaInput', elimina_precedenti: 'eliminaPrec',
+                senza_prospettiva: 'senzaProspettiva',
+                pros_senza_clip: 'prosSenzaClip', pros_senza_video: 'prosSenzaVideo',
+                pros_senza_scritte: 'prosSenzaScritte', pros_senza_bordi: 'prosSenzaBordi',
+                pros_filtro_mani: 'prosFiltroMani',
+                ppan_frames_only: 'ppanFramesOnly'};
+  for (const k in flag) fd.append(k, $(flag[k]).checked ? '1' : '0');
+
+  $('log').innerHTML = ''; nLog = 0; $('esitoBox').innerHTML = '';
+  $('results').classList.add('hidden');
+  fermaAudio();
+  log('[web] motore: ' + (ppan ? 'PPAN — ' + $('ppanDir').value
+      : (motoreScelto() === 'calibrato' ? 'calibrato (sagome per nota)'
+         : (motoreScelto() === 'prospettica' ? 'prospettica (griglia geometrica dei tasti)'
+            : 'pipeline (YOLO + mani)'))));
+  if (ppan) log('[web] ritaglio: ' + ($('ppanQuad').value || 'automatico (lo stima PPAN)'));
+  log('[web] carico il video sul server (' + MB(fileVideo.size) + ' MB)…');
+  statoMsg('caricamento…');
+  $('esegui').disabled = true; $('annulla').disabled = false;
+  avviaTimer(); setProgresso(null);
+  try {
+    const r = await fetch('/api/job', {method: 'POST', body: fd});
+    // come sopra: un video enorme fa rispondere la pagina d'errore di Flask, non il JSON
+    let d;
+    try {
+      d = await r.json();
+    } catch (_) {
+      throw new Error('caricamento rifiutato (HTTP ' + r.status + '): il video è troppo grosso ' +
+                      'per un invio unico, comprimilo (ffmpeg -i in.mp4 -crf 20 out.mp4)');
+    }
+    if (!r.ok) throw new Error(d.errore || ('HTTP ' + r.status));
+    jobId = d.id;
+    log('[web] job ' + jobId + ' avviato');
+    ciclo();
+  } catch (e) {
+    log('[ERRORE] ' + e.message, 'e');
+    $('esitoBox').innerHTML = '<div class="errbox">✘ ' + esc(e.message) + '</div>';
+    fineTimer(); aggiornaPulsanti(); $('annulla').disabled = true; statoMsg('errore');
+  }
+}
+
+async function ciclo() {
+  try {
+    const r = await fetch('/api/job/' + jobId);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.errore || ('HTTP ' + r.status));
+    jobCorrente = d;
+    renderLog(d.log || []);
+    renderMeta(d);
+    if (d.stato === 'in_corso') {
+      // PPAN riporta l'avanzamento vero (finestre elaborate): la barra diventa determinata
+      const av = d.meta && d.meta.avanzamento_ppan;
+      statoMsg((d.meta && d.meta.fase ? d.meta.fase : 'in corso…') +
+               ' · ' + elapsed().toFixed(0) + ' s');
+      if (typeof av === 'number') setProgresso(av / 100);
+      timerPoll = setTimeout(ciclo, 900);
+      return;
+    }
+    fineTimer(); setProgresso(1);
+    aggiornaPulsanti(); $('annulla').disabled = true;
+    if (d.stato === 'fatto') { statoMsg('completato'); esito('ok', d); mostraRisultati(d); }
+    else if (d.stato === 'annullato') { statoMsg('annullato'); esito('warn', d); }
+    else { statoMsg('errore'); esito('err', d); }
+    caricaRuns();
+  } catch (e) {
+    log('[ERRORE] ' + e.message, 'e');
+    fineTimer(); setProgresso(1);
+    $('esegui').disabled = !fileVideo; $('annulla').disabled = true;
+  }
+}
+</script>
+
+<script>
+// ------------------------------------------------------------- risultati
+const NOMI = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+function nomeNota(midi) {
+  const n = Math.round(midi);
+  return NOMI[((n % 12) + 12) % 12] + (Math.floor(n / 12) - 1);
+}
+const isNero = (midi) => [1, 3, 6, 8, 10].includes(((midi % 12) + 12) % 12);
+
+function tile(k, v, piccolo) {
+  return '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v' +
+         (piccolo ? ' sm' : '') + '">' + v + '</div></div>';
+}
+
+function statistiche(d) {
+  const r = d.riepilogo || {}, m = d.meta || {}, e = m.estensione || {};
+  const ev = d.eventi || [];
+  let html = '';
+  html += tile('eventi nota', (r.n_eventi || 0));
+  html += tile('note uniche', (r.note_uniche || 0));
+  html += tile('note / secondo', Number(r.note_al_secondo || 0).toFixed(2), true);
+  html += tile('durata media', (r.durata_media || 0) + ' s', true);
+  html += tile('durata video', m.frame_totali && m.fps ? (m.frame_totali / m.fps).toFixed(1) + ' s' : '—', true);
+  html += tile('intervallo', r.intervallo_midi
+        ? nomeNota(r.intervallo_midi[0]) + '–' + nomeNota(r.intervallo_midi[1]) : '—', true);
+  html += tile('tastiera stimata', e.prima_nota !== undefined
+        ? nomeNota(e.prima_nota) + '–' + nomeNota(e.ultima_nota) : '—', true);
+  const conMano = ev.some((x) => x.mano === 'Right' || x.mano === 'Left');
+  html += tile('mano dominante', conMano
+        ? (ev.filter((x) => x.mano === 'Right').length > ev.length / 2 ? 'destra' : 'sinistra') : '—', true);
+  $('stats').innerHTML = html;
+}
+
+function tabella(d) {
+  const tb = $('tabNote').querySelector('tbody');
+  tb.innerHTML = '';
+  const ev = d.eventi || [];
+  ev.forEach((e, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + (i + 1) + '</td><td><b>' + esc(e.nome || nomeNota(e.nota)) + '</b></td>' +
+      '<td class="mono">' + e.nota + '</td><td class="mono">' + e.onset.toFixed(3) + ' s</td>' +
+      '<td class="mono">' + e.offset.toFixed(3) + ' s</td><td class="mono">' + e.durata.toFixed(3) + ' s</td>' +
+      '<td class="mono">' + e.velocity + '</td><td>' + esc(e.mano || '') + '</td>';
+    tb.appendChild(tr);
+  });
+  $('noteInfo').innerHTML = ev.length
+    ? 'Prima nota a ' + ev[0].onset.toFixed(2) + ' s · ultima a ' +
+      ev[ev.length - 1].offset.toFixed(2) + ' s · ordinamento per onset crescente.'
+    : '<b style="color:var(--warn)">Nessun evento nota.</b> Il file <code>song.mid</code> è stato creato ' +
+      'comunque (MIDI valido ma senza note). Cause tipiche: nessuna pressione riconosciuta, soglie troppo ' +
+      'alte, oppure il ramo mani non è partito (nessun mediapipe/venv).';
+}
+
+// se il browser non sa decodificare il file (mp4 vecchi in MPEG-4 Part 2 = tasto play grigio)
+function avvisoCodecGriglia() {
+  const v = $('grigliaVid');
+  if (!v.getAttribute('src')) return;
+  const n = $('grigliaVidNota');
+  n.innerHTML = '⚠️ il browser non riesce a riprodurre questo <code>griglia.mp4</code>: è in ' +
+    '<b>MPEG-4 Part 2</b> (le vecchie esecuzioni lo scrivevano così e Chrome non lo decodifica). ' +
+    'Scaricalo con il tasto <i>File e MIDI</i>, oppure riesegui il job: la griglia esce ora in ' +
+    '<b>H.264</b>, che il browser riproduce.';
+  n.classList.remove('hidden');
+  $('grigliaInfo').innerHTML = 'Il video qui sopra non è riproducibile da questo browser. Guarda ' +
+    'l\'immagine (il primo frame) o scarica <code>griglia.mp4</code> dalla scheda <i>File e MIDI</i>: ' +
+    'con VLC/QuickTime si vede.';
+}
+$('grigliaVid').addEventListener('error', avvisoCodecGriglia);
+
+function collegaFile(d) {
+  const base = '/api/job/' + d.id + '/file/';
+  const disp = new Set(d.risultati || []);
+  const mappa = {dlMidi: 'song.mid', dlJson: 'notes.json', dlGriglia: 'prima_griglia.jpg',
+                 dlGrigliaVid: 'griglia.mp4', dlDebug: 'debug.mp4', dlPpan: 'notes_ppan.json'};
+  for (const id in mappa) {
+    const a = $(id), nome = mappa[id];
+    const c = disp.has(nome);
+    a.classList.toggle('hidden', !c);
+    if (c) a.href = base + nome;
+  }
+  // griglia: il video (tutti i frame) e' il controllo principale, l'immagine e' il solo primo frame
+  const haGrigliaJpg = disp.has('prima_griglia.jpg'), haGrigliaVid = disp.has('griglia.mp4');
+  const gimg = $('grigliaImg'), gvid = $('grigliaVid'), gnota = $('grigliaVidNota');
+  if (haGrigliaJpg) { gimg.src = base + 'prima_griglia.jpg'; gimg.classList.remove('hidden'); }
+  else { gimg.removeAttribute('src'); gimg.classList.add('hidden'); }
+  if (haGrigliaVid) {
+    if (haGrigliaJpg) gvid.poster = base + 'prima_griglia.jpg';
+    gvid.src = base + 'griglia.mp4';
+    gvid.classList.remove('hidden');
+    gnota.textContent = 'griglia.mp4 — la griglia dei tasti disegnata su TUTTI i frame del video ' +
+      '(ai cambi di inquadratura viene riagganciata da zero): i tasti che il modello segna come ' +
+      'premuti si scuriscono nei frame della pressione. Fermalo per controllare frame per frame. ' +
+      'Sotto, prima_griglia.jpg: il solo primo frame.';
+    gnota.classList.remove('hidden');
+  } else {
+    gvid.pause(); gvid.removeAttribute('src'); gvid.load();
+    gvid.classList.add('hidden');
+    gnota.classList.add('hidden'); gnota.textContent = '';
+  }
+  const dbg = $('debugVid');
+  if (disp.has('debug.mp4')) { dbg.src = base + 'debug.mp4'; $('tabDebug').classList.remove('hidden'); }
+  else { dbg.removeAttribute('src'); $('tabDebug').classList.add('hidden'); }
+  $('grigliaInfo').innerHTML = !haGrigliaJpg
+    ? 'immagine non disponibile per questa esecuzione'
+    : ((d.meta || {}).motore === 'ppan'
+      ? 'In alto il fotogramma con la <b>regione usata da PPAN</b>, sotto la striscia <b>720×122</b> ' +
+        'raddrizzata che la rete ha analizzato: è il controllo più utile quando il risultato è scarso.'
+      : (haGrigliaVid
+        ? 'La griglia dei tasti disegnata sopra la tastiera reale: le verticali devono cadere sui ' +
+          'tasti veri. Il <b>video qui sopra</b> la mostra su <b>tutti i frame</b>: fallo scorrere e ' +
+          'fermalo dove vuoi per vedere se la griglia resta agganciata o scivola. L\'immagine sotto è ' +
+          'il primo frame.'
+        : 'La griglia dei tasti disegnata sopra la tastiera reale: le verticali devono cadere sui ' +
+          'tasti veri. Qui c\'è solo il <b>primo frame</b>: togli la spunta a ' +
+          '<code>non scrivere griglia.mp4</code> per avere anche il video di controllo.'));
+  $('fileInfo').innerHTML = 'Cartella di lavoro: <code>web_runs/' + esc(d.id) + '/out/</code> · prodotti: ' +
+    (d.risultati || []).map((f) => '<code>' + esc(f) + '</code>').join(' ') +
+    (d.input_eliminato ? ' · video di input eliminato come richiesto' : '');
+}
+
+async function mostraRisultati(d) {
+  $('results').classList.remove('hidden');
+  statistiche(d);
+  tabella(d);
+  collegaFile(d);
+  attivaTab('paneNote');
+  await mostraSagome(d);
+  await caricaMidi(d.id);
+}
+
+// ---------------------------------------------- sagome per nota (motore calibrato)
+const NOMI_N = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+async function mostraSagome(d) {
+  const cal = ['calibrato', 'prospettica'].includes((d.meta || {}).motore);
+  $('tabSagome').classList.toggle('hidden', !cal);
+  if (!cal) return;
+  let c = null;
+  try {
+    const r = await fetch('/api/job/' + d.id + '/file/notes.json');
+    const blocco = await r.json();
+    c = blocco.calibrato || blocco.prospettica;
+  } catch (e) { c = null; }
+  if (!c) { $('sagomeInfo').textContent = 'dati delle sagome non disponibili per questa esecuzione'; return; }
+  const vis = new Set(c.visibili), em = new Set(c.emesse), o = c.ottava || {};
+  $('sagomeInfo').innerHTML = '<b>' + vis.size + '</b> note inquadrate, <b>' + em.size + '</b> con almeno un evento. ' +
+    (o.ambigua ? '<b>Ottava ambigua</b>: ' + (o.candidate || []).length + ' candidate (prima nota ' +
+       (o.candidate || []).map((x) => x.prima_nota).join(', ') + '), ipotesi usata ' + o.ipotesi_usata + '.'
+               : 'Ottava: prima nota <b>' + o.scelta + '</b>.') +
+    ' Le note in grigio non hanno riquadro e non possono comparire nel MIDI.';
+  const box = $('sagomeTasti');
+  box.innerHTML = '';
+  for (let n = 21; n <= 108; n++) {
+    const b = document.createElement('button');
+    const nome = NOMI_N[n % 12] + (Math.floor(n / 12) - 1);
+    b.type = 'button'; b.textContent = nome; b.title = 'MIDI ' + n;
+    b.className = 'btn sm' + (vis.has(n) ? '' : ' ghost');
+    b.style.cssText = 'padding:2px 4px;font-size:10px;min-width:30px;' +
+      (vis.has(n) ? (em.has(n) ? 'outline:2px solid #4cc38a;' : '') : 'opacity:.35;cursor:not-allowed;');
+    b.disabled = !vis.has(n);
+    b.addEventListener('click', () => apriClip(d.id, n, nome));
+    box.appendChild(b);
+  }
+}
+
+function apriClip(id, nota, nome) {
+  const v = $('sagomeVideo');
+  $('sagomeClip').textContent = 'clip della nota ' + nome + ' (MIDI ' + nota + ')';
+  v.style.display = 'block';
+  v.src = '/api/job/' + id + '/clip/' + nota;
+  v.play().catch(() => {});
+}
+
+function attivaTab(pane) {
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.pane === pane));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === pane));
+}
+document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => attivaTab(t.dataset.pane)));
+</script>
+
+<script>
+// ------------------------------------------- elenco delle esecuzioni
+async function caricaRuns() {
+  try {
+    const r = await fetch('/api/jobs');
+    const lista = await r.json();
+    $('runsInfo').textContent = lista.length
+      ? lista.length + (lista.length === 1 ? ' esecuzione in memoria' : ' esecuzioni in memoria')
+      : '';
+    if (!lista.length) { $('runs').innerHTML = '<span style="color:var(--text2)">nessuna esecuzione</span>'; return; }
+    $('runs').innerHTML = lista.map((j) =>
+      '<div class="run" data-id="' + j.id + '">' +
+      '<span class="nm" title="' + esc(j.video || '') + '">' + esc(j.video || j.id) + '</span>' +
+      '<span class="st ' + esc(j.stato || '') + '">' + esc(j.stato || '?') + '</span>' +
+      '<span class="mono" style="color:var(--text2);font-size:11px">' +
+      (j.motore === 'ppan' ? 'PPAN · ' : (j.motore === 'prospettica' ? 'prospettica · ' : '')) +
+      (j.n_eventi == null ? '–' : j.n_eventi) + ' note</span></div>').join('');
+    $('runs').querySelectorAll('.run').forEach((el) =>
+      el.addEventListener('click', () => apriJob(el.dataset.id)));
+  } catch (e) { /* elenco non disponibile: nessun problema */ }
+}
+
+async function apriJob(id) {
+  try {
+    const r = await fetch('/api/job/' + id);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.errore || ('HTTP ' + r.status));
+    jobId = id; jobCorrente = d;
+    $('log').innerHTML = ''; nLog = 0;
+    renderLog(d.log || []);
+    renderMeta(d);
+    esito(d.stato === 'fatto' ? 'ok' : (d.stato === 'errore' ? 'err' : 'warn'), d);
+    statoMsg('esecuzione ' + id + (d.creato_il ? ' del ' + d.creato_il : ''));
+    if (d.stato === 'fatto') mostraRisultati(d);
+  } catch (e) { log('[ERRORE] ' + e.message, 'e'); }
+}
+
+// --------------------------------------------------------- azioni globali
+$('esegui').addEventListener('click', esegui);
+$('annulla').addEventListener('click', async () => {
+  if (!jobId) return;
+  try {
+    const r = await fetch('/api/job/' + jobId + '/annulla', {method: 'POST'});
+    const d = await r.json();
+    log('[web] annullamento: ' + (d.esito || d.errore));
+  } catch (e) { log('[ERRORE] ' + e.message, 'e'); }
+});
+$('pulisci').addEventListener('click', async () => {
+  if (!jobId) { log('[web] nessuna esecuzione da pulire'); return; }
+  if (!confirm('Eliminare i file di questa esecuzione (video caricato, log, risultati)?')) return;
+  try {
+    const r = await fetch('/api/job/' + jobId + '/elimina', {method: 'POST'});
+    const d = await r.json();
+    log('[web] pulizia: ' + (d.esito || d.errore));
+    $('results').classList.add('hidden');
+    jobId = null;
+    caricaStato(); caricaRuns();
+  } catch (e) { log('[ERRORE] ' + e.message, 'e'); }
+});
+$('eliminaTutte').addEventListener('click', async () => {
+  // le esecuzioni servono solo a produrre il MIDI: passata l'occhiata, i file si buttano
+  if (!confirm('Eliminare tutte le esecuzioni concluse (video caricati, clip per nota, risultati)?')) return;
+  try {
+    const r = await fetch('/api/jobs/elimina', {method: 'POST'});
+    const d = await r.json();
+    log('[web] ' + (d.esito || d.errore));
+    if (jobId && (d.eliminate || []).indexOf(jobId) >= 0) {
+      $('results').classList.add('hidden');
+      jobId = null;
+      statoMsg('nessuna esecuzione selezionata');
+    }
+    caricaStato(); caricaRuns();
+  } catch (e) { log('[ERRORE] ' + e.message, 'e'); }
+});
+$('copiaLog').addEventListener('click', async () => {
+  const testo = Array.from($('log').children).map((x) => x.textContent).join('\n');
+  try { await navigator.clipboard.writeText(testo); log('[web] log copiato negli appunti'); }
+  catch (e) { log('[web] copia non riuscita: seleziona il testo a mano', 'w'); }
+});
+</script>
+
+<script>
+// ============================ PARSER STANDARD MIDI FILE ====================
+// Legge davvero song.mid (formati 0/1, running status, meta tempo) e converte
+// i tick in secondi assoluti: e' la stessa informazione che usa qualsiasi DAW.
+function parseSMF(buf) {
+  const dv = new DataView(buf);
+  const u8 = (o) => dv.getUint8(o), u16 = (o) => dv.getUint16(o), u32 = (o) => dv.getUint32(o);
+  const tag = (o) => String.fromCharCode(u8(o), u8(o+1), u8(o+2), u8(o+3));
+  if (buf.byteLength < 14 || tag(0) !== 'MThd') throw new Error('non è un file MIDI (manca MThd)');
+  const lenH = u32(4), formato = u16(8), divisione = u16(12);
+  const ticksPerBeat = (divisione & 0x8000) ? 0 : divisione;
+  let p = 8 + lenH;
+  const grezze = [], tempi = [{tick: 0, us: 500000}];
+  let tracce = 0, eventiTot = 0;
+  while (p + 8 <= buf.byteLength) {
+    if (tag(p) !== 'MTrk') { p += 8 + u32(p + 4); continue; }
+    const fine = p + 8 + u32(p + 4);
+    p += 8; tracce++;
+    let tick = 0, stato = 0, b, d;
+    const aperte = {};
+    while (p < fine) {
+      d = 0; do { b = u8(p++); d = (d << 7) | (b & 0x7f); } while (b & 0x80);
+      tick += d;
+      if (p >= fine) break;
+      const peek = u8(p);
+      if (peek & 0x80) { stato = peek; p++; }
+      else if (stato === 0) break;                    // stato implicito senza status: fermati
+      const tipo = stato & 0xf0, ch = stato & 0x0f;
+      if (stato === 0xff) {
+        const meta = u8(p++);
+        let l = 0; do { b = u8(p++); l = (l << 7) | (b & 0x7f); } while (b & 0x80);
+        if (meta === 0x51 && l === 3) tempi.push({tick, us: (u8(p) << 16) | (u8(p+1) << 8) | u8(p+2)});
+        p += l; eventiTot++;
+      } else if (stato === 0xf0 || stato === 0xf7) {
+        let l = 0; do { b = u8(p++); l = (l << 7) | (b & 0x7f); } while (b & 0x80);
+        p += l; eventiTot++;
+      } else if (tipo === 0x90 || tipo === 0x80) {
+        const nota = u8(p), vel = u8(p + 1); p += 2;
+        const k = ch + ':' + nota;
+        if (tipo === 0x90 && vel > 0) aperte[k] = {tick, vel};
+        else if (aperte[k]) { grezze.push({on: aperte[k].tick, off: tick, nota, vel: aperte[k].vel}); delete aperte[k]; }
+        eventiTot++;
+      } else if (tipo === 0xc0 || tipo === 0xd0) { p += 1; eventiTot++; }
+      else { p += 2; eventiTot++; }
+      if (p > fine) { p = fine; break; }
+    }
+    for (const k in aperte)
+      grezze.push({on: aperte[k].tick, off: tick, nota: parseInt(k.split(':')[1], 10), vel: aperte[k].vel});
+    p = fine;
+  }
+  if (!ticksPerBeat) throw new Error('MIDI con divisione SMPTE: non supportato dal player');
+  tempi.sort((a, b) => a.tick - b.tick);
+  const seg = [{tick: 0, us: tempi[0].us}];
+  for (let i = 1; i < tempi.length; i++)
+    if (tempi[i].tick > seg[seg.length - 1].tick) seg.push(tempi[i]);
+  const secAt = (t) => {
+    let s = 0;
+    for (let i = 0; i < seg.length; i++) {
+      const t0 = seg[i].tick, t1 = (i + 1 < seg.length) ? seg[i + 1].tick : Infinity;
+      s += Math.max(0, Math.min(t, t1) - t0) / ticksPerBeat * (seg[i].us / 1e6);
+      if (t <= t1) break;
+    }
+    return s;
+  };
+  const note = grezze.filter((n) => n.off > n.on && n.nota >= 0 && n.nota <= 127)
+    .map((n) => ({note: n.nota, velocity: n.vel, start: secAt(n.on), end: secAt(n.off)}))
+    .sort((a, b) => a.start - b.start || a.note - b.note);
+  for (const n of note) n.duration = Math.max(0.02, n.end - n.start);
+  return {formato, tracce, ticksPerBeat, tempi: seg, note, eventiTot};
+}
+
+// ------------------------------------------- caricamento del risultato
+let evSuonate = [], sorgenteNote = '—', durataBrano = 0, posCorrente = 0;
+
+function hexDump(u8arr, n) {
+  const righe = [];
+  for (let i = 0; i < Math.min(n, u8arr.length); i += 16) {
+    const pezzo = Array.from(u8arr.slice(i, i + 16))
+      .map((b) => b.toString(16).padStart(2, '0')).join(' ');
+    righe.push(i.toString(16).padStart(4, '0') + '  ' + pezzo);
+  }
+  return righe.join('\n');
+}
+
+async function caricaMidi(id) {
+  const url = '/api/job/' + id + '/file/';
+  evSuonate = []; sorgenteNote = '—'; posCorrente = 0;
+  $('playBtn').disabled = true;
+  let info = '';
+  try {
+    const r = await fetch(url + 'song.mid');
+    if (r.ok) {
+      const buf = await r.arrayBuffer();
+      $('hexMid').textContent = 'song.mid — ' + buf.byteLength + ' byte, intestazione:\n' +
+                                hexDump(new Uint8Array(buf), 48);
+      const d = parseSMF(buf);
+      const bpm = 60000000 / (d.tempi[0] ? d.tempi[0].us : 500000);
+      info = 'SMF tipo ' + d.formato + ' · ' + d.tracce + ' traccia/e · ' + d.ticksPerBeat +
+             ' tick/battuta · ' + bpm.toFixed(1) + ' BPM · ' + d.eventiTot + ' eventi MIDI';
+      if (d.note.length) { evSuonate = d.note; sorgenteNote = 'song.mid'; }
+    } else {
+      $('hexMid').textContent = 'song.mid non disponibile (HTTP ' + r.status + ')';
+    }
+  } catch (e) {
+    log('lettura di song.mid: ' + e.message, 'w');
+    $('hexMid').textContent = 'song.mid non leggibile: ' + e.message;
+  }
+  if (!evSuonate.length) {                       // ripiego sul JSON degli eventi
+    try {
+      const r2 = await fetch(url + 'notes.json');
+      if (r2.ok) {
+        const j = await r2.json();
+        evSuonate = (j.eventi || []).map((e) => ({note: e.nota, velocity: e.velocity,
+          start: e.onset, end: e.offset, duration: Math.max(0.02, e.durata)}));
+        if (evSuonate.length) sorgenteNote = 'notes.json (ripiego)';
+      }
+    } catch (e) { /* niente ripiego */ }
+  }
+  durataBrano = evSuonate.length ? Math.max.apply(null, evSuonate.map((n) => n.end)) : 0;
+  $('smfInfo').textContent = info ? (info + ' · ' + evSuonate.length + ' note da ' + sorgenteNote) :
+                                   ('nessuna nota da suonare (' + sorgenteNote + ')');
+  $('playBtn').disabled = !evSuonate.length;
+  disegnaRoll(0);
+  disegnaTastiera(0);
+  aggiornaOrologio(0);
+}
+</script>
+
+<script>
+// =================== AUDIO: sintesi locale con Web Audio ==================
+let audioCtx = null, master = null, programmati = [], inRiproduzione = false;
+let tOrigine = 0, raf = null;
+
+function contesto() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    master = audioCtx.createGain();
+    master.gain.value = parseFloat($('vol').value);
+    master.connect(audioCtx.destination);
+  }
+  return audioCtx;
+}
+
+function suonaNota(midi, velocity, durata, strumento, quando) {
+  const c = contesto(), freq = 440 * Math.pow(2, (midi - 69) / 12);
+  const vol = (velocity / 127) * 0.35;
+  const osc = c.createOscillator(), osc2 = c.createOscillator();
+  const g = c.createGain(), f = c.createBiquadFilter();
+  if (strumento === 'epiano') {
+    osc.type = 'sine'; osc2.type = 'triangle'; osc2.frequency.value = freq * 4;
+    f.type = 'lowpass'; f.frequency.value = 5000;
+  } else if (strumento === 'organ') {
+    osc.type = 'square'; osc2.type = 'square'; osc2.frequency.value = freq * 1.5;
+    f.type = 'lowpass'; f.frequency.value = 2000;
+  } else if (strumento === 'synth') {
+    osc.type = 'sawtooth'; osc2.type = 'sine'; osc2.frequency.value = freq * 0.5;
+    f.type = 'lowpass'; f.frequency.value = 1500; f.Q.value = 5;
+  } else {
+    osc.type = 'triangle'; osc2.type = 'sine'; osc2.frequency.value = freq * 2;
+    f.type = 'lowpass'; f.frequency.value = 3000;
+  }
+  osc.frequency.value = freq;
+  osc.connect(f); osc2.connect(f); f.connect(g); g.connect(master);
+  const att = 0.008, ril = Math.min(0.45, Math.max(0.05, durata * 0.5));
+  const t0 = Math.max(quando, c.currentTime);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.linearRampToValueAtTime(vol, t0 + att);
+  g.gain.setValueAtTime(vol, t0 + Math.max(att, durata - ril));
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + durata + ril);
+  osc.start(t0); osc2.start(t0);
+  osc.stop(t0 + durata + ril + 0.05); osc2.stop(t0 + durata + ril + 0.05);
+  return [osc, osc2];
+}
+
+function fermaSuoni() {
+  for (const coppia of programmati) for (const o of coppia) { try { o.stop(); } catch (e) {} }
+  programmati = [];
+}
+
+function fermaPlayback() {
+  inRiproduzione = false;
+  fermaSuoni();
+  if (raf) cancelAnimationFrame(raf);
+  raf = null;
+  $('playBtn').textContent = '▶';
+}
+
+function fermaAudio() { fermaPlayback(); posCorrente = 0; }
+
+function riproduci() {
+  if (!evSuonate.length) return;
+  const c = contesto();
+  if (c.resume) c.resume();
+  fermaSuoni();
+  inRiproduzione = true;
+  $('playBtn').textContent = '⏸';
+  const base = c.currentTime + 0.06;
+  tOrigine = base - posCorrente;
+  programmati = [];
+  for (const n of evSuonate) {
+    if (n.end <= posCorrente) continue;
+    programmati.push(suonaNota(n.note, n.velocity, n.duration, $('instr').value,
+                               base + Math.max(0, n.start - posCorrente)));
+  }
+  const passo = () => {
+    if (!inRiproduzione) return;
+    const pos = c.currentTime - tOrigine;
+    if (pos >= durataBrano + 0.25) {
+      if ($('loopChk').checked) { posCorrente = 0; riproduci(); return; }
+      fermaPlayback();
+      posCorrente = 0;
+      disegnaRoll(0); disegnaTastiera(0); aggiornaOrologio(0);
+      return;
+    }
+    posCorrente = Math.max(0, pos);
+    aggiornaOrologio(posCorrente);
+    disegnaRoll(posCorrente);
+    disegnaTastiera(posCorrente);
+    raf = requestAnimationFrame(passo);
+  };
+  raf = requestAnimationFrame(passo);
+}
+
+function aggiornaOrologio(pos) {
+  $('clock').textContent = fmtT(pos) + ' / ' + fmtT(durataBrano);
+}
+
+$('playBtn').addEventListener('click', () => { if (inRiproduzione) fermaPlayback(); else riproduci(); });
+$('stopBtn').addEventListener('click', () => {
+  fermaPlayback();
+  posCorrente = 0;
+  disegnaRoll(0); disegnaTastiera(0); aggiornaOrologio(0);
+});
+$('vol').addEventListener('input', () => { if (master) master.gain.value = parseFloat($('vol').value); });
+$('instr').addEventListener('change', () => {
+  if (inRiproduzione) { const p = posCorrente; fermaPlayback(); posCorrente = p; riproduci(); }
+});
+$('tempo').addEventListener('change', () => disegnaRoll(posCorrente));
+</script>
+
+<script>
+// ================================ DISEGNO =================================
+function disegnaRoll(pos) {
+  const cv = $('roll');
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  const LARG = 54, KH = 13;
+  if (!evSuonate.length) {
+    cv.width = 660; cv.height = 110; cv.style.width = '660px'; cv.style.height = '110px';
+    ctx.fillStyle = '#0d0d15'; ctx.fillRect(0, 0, 660, 110);
+    ctx.fillStyle = '#8888a0'; ctx.font = '12px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('Nessuna nota da disegnare: il MIDI è valido ma vuoto (0 eventi).', 14, 46);
+    ctx.fillText('Prova con “senza mani” per controllare la griglia, o abbassa la soglia di confidenza.', 14, 68);
+    return;
+  }
+  const min = Math.max(0, Math.min.apply(null, evSuonate.map((n) => n.note)) - 2);
+  const max = Math.min(127, Math.max.apply(null, evSuonate.map((n) => n.note)) + 2);
+  const nKeys = max - min + 1;
+  const durata = Math.max(durataBrano, 0.4);
+  const pps = Math.max(26, Math.min(150, 780 / durata));
+  const battuta = 60 / Math.max(30, parseFloat($('tempo').value) || 120);
+  const W = Math.round(LARG + (durata + 0.3) * pps), H = nKeys * KH;
+  cv.width = W; cv.height = H; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  ctx.fillStyle = '#0d0d15'; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < nKeys; i++) {
+    const m = max - i, y = i * KH;
+    ctx.fillStyle = isNero(m) ? '#14141e' : '#171724';
+    ctx.fillRect(LARG, y, W - LARG, KH);
+    ctx.strokeStyle = '#22222f'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(LARG, y + 0.5); ctx.lineTo(W, y + 0.5); ctx.stroke();
+    if (!isNero(m)) {
+      ctx.fillStyle = '#6b7280'; ctx.font = '9px ui-monospace,monospace'; ctx.textAlign = 'right';
+      ctx.fillText(nomeNota(m), LARG - 5, y + KH - 3);
+    }
+  }
+  for (let b = 0; b * battuta <= durata + 0.3; b++) {
+    const x = LARG + b * battuta * pps;
+    ctx.strokeStyle = (b % 4 === 0) ? '#3a3a5a' : '#232333';
+    ctx.lineWidth = (b % 4 === 0) ? 1 : 0.5;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (const n of evSuonate) {
+    const y = (max - n.note) * KH, x = LARG + n.start * pps;
+    const w = Math.max(2, n.duration * pps - 1);
+    const attiva = (pos >= n.start && pos < n.end);
+    const grad = ctx.createLinearGradient(x, y, x, y + KH);
+    grad.addColorStop(0, attiva ? '#7ef0d4' : '#00d4aa');
+    grad.addColorStop(1, attiva ? '#00d4aa' : '#0a8f74');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y + 1, w, KH - 2, 2); else ctx.rect(x, y + 1, w, KH - 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,' + ((n.velocity / 127) * 0.28) + ')';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y + 1, w, KH - 2, 2); else ctx.rect(x, y + 1, w, KH - 2);
+    ctx.fill();
+  }
+  const xp = LARG + pos * pps;
+  ctx.strokeStyle = '#f472b6'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(xp, 0); ctx.lineTo(xp, H); ctx.stroke();
+  const wrap = cv.parentElement;
+  if (wrap && wrap.clientWidth) {
+    const vl = wrap.scrollLeft, vw = wrap.clientWidth;
+    if (xp < vl + 30 || xp > vl + vw - 30) wrap.scrollLeft = Math.max(0, xp - vw / 2);
+  }
+}
+
+function disegnaTastiera(pos) {
+  const cont = $('kbd'), cv = $('kbdCanvas');
+  if (!cont || !cv) return;
+  const ctx = cv.getContext('2d');
+  const W = Math.max(320, cont.clientWidth || 640), H = 74;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (!evSuonate.length) {
+    ctx.fillStyle = '#0d0d15'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#5f6b7d'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('tastiera inattiva: nessuna nota da mostrare', W / 2, H / 2 + 4);
+    return;
+  }
+  const lo = Math.max(0, Math.min.apply(null, evSuonate.map((n) => n.note)) - 1);
+  const hi = Math.min(127, Math.max.apply(null, evSuonate.map((n) => n.note)) + 1);
+  const bianche = [];
+  for (let m = lo; m <= hi; m++) if (!isNero(m)) bianche.push(m);
+  const lb = W / bianche.length;
+  const attive = new Set();
+  for (const n of evSuonate) if (pos >= n.start && pos < n.end) attive.add(n.note);
+  bianche.forEach((m, i) => {
+    const x = i * lb;
+    ctx.fillStyle = attive.has(m) ? '#00d4aa' : '#e8e8f0';
+    ctx.fillRect(x + 0.5, 0, lb - 1, H);
+    ctx.strokeStyle = '#2a2a3a'; ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, 0.5, lb - 1, H - 1);
+    if (m % 12 === 0) {
+      ctx.fillStyle = attive.has(m) ? '#04211a' : '#7b8494';
+      ctx.font = '9px ui-monospace,monospace'; ctx.textAlign = 'center';
+      ctx.fillText(nomeNota(m), x + lb / 2, H - 6);
+    }
+  });
+  for (let m = lo; m <= hi; m++) {
+    if (!isNero(m)) continue;
+    let i = -1;
+    for (let k = 0; k < bianche.length; k++) { if (bianche[k] < m) i = k; else break; }
+    if (i < 0) continue;
+    const ln = lb * 0.62, hn = H * 0.62, x = (i + 1) * lb - ln / 2;
+    ctx.fillStyle = attive.has(m) ? '#00a884' : '#181820';
+    ctx.fillRect(x, 0, ln, hn);
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, 0.5, ln - 1, hn - 1);
+  }
+}
+
+document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
+  if (t.dataset.pane === 'paneRoll') { disegnaRoll(posCorrente); disegnaTastiera(posCorrente); }
+}));
+window.addEventListener('resize', () => disegnaTastiera(posCorrente));
+
+// ===================== 🎓 ADDESTRAMENTO DEL MODELLO DEI TASTI =====================
+let fileCorso = [];              // file scelti con "Scegli i video + i MIDI…"
+let jobCorso = null;             // corso in esecuzione
+let riusaCorso = null;           // ultimo corso "solo controllo allineamento": griglia e dita si riusano
+let scostamenti = {};            // scostamento MIDI (s) scelto a mano, per pezzo ('' = auto)
+let timerCorso = null, nLogCorso = 0;
+
+const estDi = (n) => (String(n).split('.').pop() || '').toLowerCase();
+const eMidi = (n) => ['mid', 'midi', 'smf'].includes(estDi(n));
+const stemDi = (n) => String(n).replace(/\.[^.]+$/, '');
+
+/** Raggruppa i file scelti in pezzi: video e MIDI devono avere lo stesso nome. */
+function coppieCorso() {
+  const c = {};
+  for (const f of fileCorso) {
+    const s = stemDi(f.name);
+    (c[s] = c[s] || {})[eMidi(f.name) ? 'midi' : 'video'] = f;
+  }
+  return c;
+}
+
+/** Disegna l'elenco dei pezzi scelti, con video e MIDI accoppiati. */
+function disegnaPezzi() {
+  const c = coppieCorso(), nomi = Object.keys(c).sort();
+  const mbTot = fileCorso.reduce((a, f) => a + f.size, 0);
+  $('corsoInfo').textContent = nomi.length
+    ? nomi.length + (nomi.length === 1 ? ' pezzo' : ' pezzi') + ' · ' + fileCorso.length +
+      ' file · ' + MB(mbTot) + ' MB'
+    : 'nessun file scelto';
+  $('hintAllinea').style.display = nomi.some((n) => c[n].video && c[n].midi) ? 'block' : 'none';
+  if (!nomi.length) { $('listaPezzi').innerHTML = ''; return; }
+  $('listaPezzi').innerHTML = nomi.map((n) => {
+    const v = c[n], ok = v.video && v.midi;
+    return '<div class="pezzo"><span class="mono" style="flex:0 0 150px;overflow:hidden;' +
+      'text-overflow:ellipsis" title="' + esc(n) + '">' + esc(n) + '</span>' +
+      '<span class="st ' + (v.video ? 'ok' : 'ko') + '">' +
+        (v.video ? '🎬 video ' + MB(v.video.size) + ' MB' : '✗ manca il video') + '</span>' +
+      '<span class="st ' + (v.midi ? 'ok' : 'ko') + '">' +
+        (v.midi ? '🎵 MIDI' : '✗ manca il MIDI') + '</span>' +
+      (ok ? '<input class="allinea" type="text" data-stem="' + esc(n) + '" placeholder="auto" ' +
+        'title="Scostamento del MIDI rispetto al video per QUESTO pezzo, in secondi. ' +
+        'Positivo = il video è in ritardo sul MIDI (le note arrivano prima di quello che si vede). ' +
+        'Vuoto = lo stima da solo. Guarda le immagini di «Controlla l’allineamento» per scegliere ' +
+        'il numero." value="' + esc(scostamenti[n] || '') + '">' +
+        '<span style="color:var(--text2);font-size:11px">s di scostamento (vuoto = auto)</span>'
+        : '<span style="color:var(--text2);font-size:11.5px">servono entrambi, con lo ' +
+          'stesso nome: ' + esc(n) + '.mp4 + ' + esc(n) + '.mid</span>') + '</div>';
+  }).join('');
+  $('listaPezzi').querySelectorAll('input.allinea').forEach((el) => {
+    el.addEventListener('input', () => { scostamenti[el.dataset.stem] = el.value.trim(); });
+  });
+}
+
+/** Log del corso: stessi colori del log della pipeline, ora del server se presente. */
+function logCorso(msg, ora) {
+  const s = String(msg == null ? '' : msg);
+  let cls = '';
+  if (/^\[ERRORE\]|^\[corso\] errore|Traceback|Exception|eccezione|^Error/.test(s)) cls = 'e';
+  else if (/^\[AVVISO\]|ATTENZIONE|attenzione|^\[!\]/.test(s)) cls = 'w';
+  else if (/^\[web\]/.test(s)) cls = 'web';
+  else if (/^\[corso\]|^\[griglia\]|^\[video\]|^===|^epoca|^salvato|^train |^val |^ritardo|^note/
+           .test(s)) cls = 'g';
+  const el = $('logCorso');
+  if (!nLogCorso) el.innerHTML = '';
+  const div = document.createElement('div');
+  div.innerHTML = '<span class="t">' +
+    esc(ora || new Date().toLocaleTimeString('it-IT', {hour12:false})) +
+    '</span><span class="' + cls + '">' + esc(s) + '</span>';
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+  nLogCorso++;
+}
+
+function faseCorso(txt, perc) {
+  $('corsoFase').textContent = txt;
+  if (perc == null) return;
+  $('progressoCorso').style.display = 'block';
+  $('progressoCorsoBar').style.width = Math.max(0, Math.min(100, perc)) + '%';
+}
+
+async function infoAddestra() {
+  try {
+    const r = await fetch('/api/stato');
+    return ((await r.json()) || {}).addestra || {};
+  } catch (e) { return {}; }
+}
+
+/** Crea il corso sul server: video + MIDI insieme, poi segue il log da sola. */
+/** Crea il corso sul server: video + MIDI insieme, poi segue il log da sola.
+ *
+ * `prepara=true` = solo il controllo dell'allineamento (griglia + dita + etichette + immagini,
+ * senza addestrare). Il corso che ne esce resta riusabile: quando si preme «Addestra» griglia e
+ * dita non si ricalcolano (si rifà solo il dataset col ritardo giusto).
+ */
+async function avviaAddestra(prepara) {
+  const c = coppieCorso(), nomi = Object.keys(c).sort();
+  const rotti = nomi.filter((n) => !(c[n].video && c[n].midi));
+  const esito = $('esitoCorso');
+  if (!nomi.length) {
+    esito.innerHTML = '<div class="errbox">✘ Scegli prima i video e i loro MIDI.</div>';
+    return;
+  }
+  if (rotti.length) {
+    esito.innerHTML = '<div class="errbox">✘ Video e MIDI devono avere lo stesso nome: senza ' +
+      'coppia <code>' + esc(rotti.join(', ')) + '</code>.</div>';
+    return;
+  }
+  const ad = await infoAddestra();
+  if (ad.script === false) {
+    esito.innerHTML = '<div class="errbox">✘ Manca <code>addestra_tasti/</code> ' +
+      '(1_estrai_mani.py, 2_costruisci_dataset.py, 3_addestra.py, 4_inferenza.py): senza quegli ' +
+      'script non si allena niente.</div>';
+    return;
+  }
+  const fd = new FormData();
+  for (const f of fileCorso) fd.append('file', f, f.name);
+  fd.append('epoche', $('corsoEpoche').value);
+  fd.append('raggio', $('corsoRaggio').value);
+  fd.append('p_neg', $('corsoPneg').value);
+  fd.append('ritardo', $('corsoRitardo').value.trim() || 'auto');
+  fd.append('prima_nota', $('corsoPrimaNota').value.trim());
+  fd.append('val', $('corsoVal').value.trim());
+  fd.append('inferenza', $('corsoInferenza').checked ? '1' : '0');
+  fd.append('pulisci', $('corsoPulisci').checked ? '1' : '0');
+  fd.append('prepara', prepara ? '1' : '0');
+  // scostamento a mano per ogni pezzo (vuoto = lo stima da solo)
+  let aMano = [];
+  for (const n of nomi) {
+    const v = (scostamenti[n] || '').trim();
+    if (v) { fd.append('allinea__' + n, v); aMano.push(n + ' ' + v + ' s'); }
+  }
+  // il corso preparato prima si riusa: la griglia e le dita (la parte lenta) restano quelle
+  if (!prepara && riusaCorso) fd.append('riusa', riusaCorso);
+  // ripetendo il controllo i video verrebbero ricopiati ogni volta: il server butta via il
+  // controllo precedente (mai un modello addestrato)
+  if (prepara && riusaCorso) fd.append('scarta', riusaCorso);
+  esito.innerHTML = '';
+  nLogCorso = 0;
+  $('logCorso').innerHTML = '';
+  logCorso('[web] carico ' + fileCorso.length + ' file (' +
+           MB(fileCorso.reduce((a, f) => a + f.size, 0)) + ' MB)…');
+  if (prepara)
+    logCorso('[web] controllo dell\'allineamento: griglia + dita + etichette + immagini, senza ' +
+             'addestrare');
+  else if (riusaCorso)
+    logCorso('[web] riuso griglia e dita del corso ' + riusaCorso + ': si rifà solo il dataset');
+  if (aMano.length) logCorso('[web] scostamenti scelti a mano: ' + aMano.join(', '));
+  if (ad.mediapipe === false)
+    logCorso('[AVVISO] mediapipe non è disponibile: le dita non si possono cercare, quindi il ' +
+             'filtro mani e le etichette “premuto / non premuto” perdono un pezzo di informazione', 'w');
+  if (nomi.length === 1)
+    logCorso('[AVVISO] un solo pezzo: il modello si allena su tutto e non resta nessun video per ' +
+             'misurarlo. Con 3-4 brani diversi il risultato si può giudicare.', 'w');
+  $('avviaAddestra').disabled = true;
+  $('controllaAllinea').disabled = true;
+  $('annullaAddestra').disabled = false;
+  faseCorso('carico i file sul server…', 0);
+  try {
+    const r = await fetch('/api/addestra', {method: 'POST', body: fd});
+    // il server risponde SEMPRE in JSON: se non ci riesce (es. caricamento oltre il limite) il
+    // corpo è la pagina d'errore di Flask, che qui non si può leggere
+    let d;
+    try {
+      d = await r.json();
+    } catch (_) {
+      throw new Error('caricamento rifiutato (HTTP ' + r.status + '): carica meno pezzi insieme ' +
+                      'o comprimi i video, poi riprova');
+    }
+    if (!r.ok) {
+      if (riusaCorso && !prepara) {
+        riusaCorso = null;      // il corso preparato non c'è più: si riparte da zero, non ci si ferma
+        logCorso('[AVVISO] riparto senza riusare: ' + (d.errore || 'corso non disponibile'), 'w');
+        $('avviaAddestra').disabled = false;
+        $('controllaAllinea').disabled = false;
+        $('annullaAddestra').disabled = true;
+        return avviaAddestra(false);
+      }
+      throw new Error(d.errore || ('HTTP ' + r.status));
+    }
+    jobCorso = d.id;
+    if (prepara) riusaCorso = d.id;
+    logCorso('[web] corso ' + d.id + ': ' + d.pezzi.length + ' pezzi (' + d.pezzi.join(', ') + ')');
+    cicloCorso();
+  } catch (e) {
+    logCorso('[ERRORE] ' + e.message);
+    esito.innerHTML = '<div class="errbox">✘ ' + esc(e.message) + '</div>';
+    fineCorso();
+  }
+}
+
+/** Segue il corso riga per riga finché non è finito (o fallisce). */
+async function cicloCorso() {
+  try {
+    const r = await fetch('/api/job/' + jobCorso);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.errore || ('HTTP ' + r.status));
+    const righe = d.log || [];
+    if (righe.length < nLogCorso) { nLogCorso = 0; $('logCorso').innerHTML = ''; }
+    for (let i = nLogCorso; i < righe.length; i++) logCorso(righe[i].s, righe[i].t);
+    nLogCorso = righe.length;
+    const m = d.meta || {};
+    const f1v = (m.f1_note != null ? m.f1_note : m.f1);
+    faseCorso((m.fase || d.stato) + (f1v != null ? ' · F1 note ' + f1v : ''), m.progresso);
+    if (d.stato === 'in_corso') { timerCorso = setTimeout(cicloCorso, 2000); return; }
+    esitoCorso(d);
+    fineCorso();
+  } catch (e) {
+    logCorso('[ERRORE] ' + e.message);
+    fineCorso();
+  }
+}
+
+function fineCorso() {
+  if (timerCorso) { clearTimeout(timerCorso); timerCorso = null; }
+  $('avviaAddestra').disabled = false;
+  $('controllaAllinea').disabled = false;
+  $('annullaAddestra').disabled = true;
+  caricaModelli();
+}
+
+/** Riepilogo del corso: modello scaricabile, riepilogo, log e prova per tasto. */
+function esitoCorso(d) {
+  const m = d.meta || {}, base = '/api/job/' + d.id + '/file/';
+  const esito = $('esitoCorso');
+  if (d.stato === 'errore') {
+    esito.innerHTML = '<div class="errbox">✘ Il corso si è fermato: ' + esc(d.errore || 'errore') +
+      '<br>Guarda il log qui sopra: la prima riga segnata in rosso è la causa.</div>';
+    return;
+  }
+  if (d.stato === 'annullato') {
+    esito.innerHTML = '<div class="warnbox">corso annullato: i file già prodotti restano nella ' +
+      'cartella del corso (' + esc(d.id) + ').</div>';
+    return;
+  }
+  let h = '<div class="okbox" style="margin-top:12px"><b>' +
+    (m.prepara ? 'Controllo dell\'allineamento fatto (il modello NON è stato addestrato).'
+               : 'Corso concluso.') + '</b> ' +
+    (m.campioni ? m.campioni + ' campioni, ' + m.premuti + ' premuti' : '') +
+    (m.f1_note != null ? ' · <b>F1 sulle note</b> ' + m.f1_note + ' sui brani mai visti (uscita vera)'
+       : (m.f1 != null ? ' · F1 in validazione <b>' + m.f1 + '</b> su brani tenuti fuori'
+                       : (m.prepara ? '' : ' · nessuna misura di validazione (serve almeno un ' +
+                                           'brano di verifica)'))) + '</div>';
+  if (m.prepara)
+    h += '<div class="noteinfo" style="margin-top:10px">La griglia dei tasti e le dita sono ' +
+      'già calcolate e restano: <b>guarda le immagini qui sotto</b>, sistema gli scostamenti nel ' +
+      'campo accanto a ogni pezzo e poi premi <b>🎓 Addestra il modello</b> — si rifà solo il ' +
+      'dataset, non si rifà la parte lenta.</div>';
+  h += '<div class="meta" style="margin-top:10px">' +
+    (m.prepara ? '' : '<a class="btn primary" href="' + base + 'modello.pt" download>💾 modello.pt</a>') +
+    '<a class="btn sm ghost" href="' + base + 'modello.json">modello.json (riepilogo)</a>' +
+    '<a class="btn sm ghost" href="' + base + 'log.txt">log.txt</a>' +
+    (m.prova ? '<a class="btn sm ghost" href="/viewer?job=' + d.id + '&pezzo=' +
+      encodeURIComponent(m.prova_pezzo || '') + '">▶ guarda la prova per tasto</a>' : '') +
+    '</div>';
+  if (m.prova)
+    h += '<div class="noteinfo">Nella prova il colore di ogni tasto è la probabilità che il ' +
+      'modello gli assegna di essere premuto: <b>è esattamente quello che la rete ha imparato</b> ' +
+      'dai tuoi video, e ogni errore che si vede si corregge aggiungendo video registrati meglio.</div>';
+  h += immaginiAllineamento(d, m, base);
+  esito.innerHTML = h;
+}
+
+/** Le immagini di controllo: i tasti che il MIDI dice premuti, disegnati sul video vero.
+ *
+ * Serve a vedere a occhio se le etichette cadono sotto le dita, cioe' se il ritardo MIDI-video
+ * di quel pezzo e' giusto: se sono spostate si corregge lo scostamento e si ripete il controllo.
+ */
+function immaginiAllineamento(d, m, base) {
+  const img = m.allineamento_immagini || {};
+  const pezzi = Object.keys(img).sort();
+  if (!pezzi.length) return '';
+  const rit = m.ritardi || {}, auto = m.ritardi_auto || {}, raggi = m.raggi || {};
+  let h = '<div class="noteinfo" style="margin-top:12px"><b>Controllo dell\'allineamento MIDI–video' +
+    '</b> (immagini prodotte durante il corso): i tasti che il MIDI dice premuti sono in rosso e ' +
+    'devono stare sotto le dita. Se in un pezzo sono spostati, scrivi lo scostamento nel campo ' +
+    'accanto al pezzo (secondi, positivo = il video è in ritardo sul MIDI) e ripremi ' +
+    '<b>🔎 Controlla l\'allineamento</b>.</div>';
+  for (const s of pezzi) {
+    const a = auto[s];
+    h += '<div style="margin-top:8px"><span class="mono" style="font-size:12px">' + esc(s) +
+      '</span> <span style="color:var(--text2);font-size:11.5px">ritardo MIDI usato ' +
+      (rit[s] != null ? esc(rit[s]) + ' s' : '?') +
+      (a ? ' (auto: ' + esc(a.s) + ' s, correlazione ' + esc(a.correlazione) + ')' : '') +
+      (raggi[s] ? ' · raggio ' + esc(raggi[s]) + ' larghezze' : '') + '</span>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">' +
+      img[s].map((f) => '<a href="' + base + encodeURI(f) + '" target="_blank" title="' + esc(f) +
+        '"><img src="' + base + encodeURI(f) + '" loading="lazy" alt="' + esc(f) +
+        '" style="width:210px;border:1px solid var(--border);border-radius:6px"></a>').join('') +
+      '</div></div>';
+  }
+  return h;
+}
+
+const ICONE = {mp4:'🎬', mov:'🎬', mkv:'🎬', avi:'🎬', jpg:'🖼', jpeg:'🖼', png:'🖼', webp:'🖼',
+               gif:'🖼', json:'🧮', npz:'🗃', zip:'📦', md:'📄', txt:'📄', py:'⚙️', html:'🌐',
+               mid:'🎵', midi:'🎵', csv:'📊', pt:'🧠', task:'🧠', mp3:'🔊', wav:'🔊', yaml:'⚙️',
+               yml:'⚙️', sh:'⚙️', toml:'⚙️', jsonl:'🧮'};
+const APRIBILI = ['mp4', 'mov', 'mkv', 'avi', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'html',
+                  'json', 'txt', 'md', 'csv', 'jsonl', 'py', 'mp3', 'wav'];
+
+/** I modelli già addestrati, con la misura di validazione e i file pronti. */
+async function caricaModelli() {
+  const box = $('modelliCorso');
+  try {
+    const r = await fetch('/api/modelli');
+    const lista = await r.json();
+    if (!lista.length) {
+      box.innerHTML = '<div class="noteinfo">Nessun modello addestrato: carica i video qui sopra ' +
+        'e premi <b>Addestra il modello</b>. Il primo corso crea il primo modello.</div>';
+      return;
+    }
+    box.innerHTML = '<div class="meta" style="margin:0 0 6px"><b style="font-size:12.5px">' +
+      'Modelli addestrati (' + lista.length + ')</b><span style="color:var(--text2);' +
+      'font-size:11.5px">il più recente per primo</span></div>' + lista.map((m) => {
+      const ok = m.stato === 'fatto';
+      return '<div class="pezzo">' +
+        '<span class="st ' + (ok ? 'ok' : 'ko') + '">' + esc(m.stato || '?') + '</span>' +
+        '<span class="mono" style="flex:0 0 128px;font-size:11px;color:var(--text2)">' +
+          esc(m.creato_il || m.id) + '</span>' +
+        '<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis" title="' +
+          esc((m.pezzi || []).join(', ')) + '">' + (m.pezzi || []).length + ' pezzi: ' +
+          esc((m.pezzi || []).join(', ')) + '</span>' +
+        '<span class="mono" style="font-size:11px;color:var(--text2)">' +
+          (m.campioni ? m.campioni + ' campioni · ' : '') +
+          (m.f1_note != null ? 'F1 note ' + m.f1_note + ' · '
+                             : (m.f1 != null ? 'F1 ' + m.f1 + ' · ' : 'F1 – · ')) +
+          (m.epoche ? m.epoche + ' epoche · ' : '') + m.mb + ' MB</span>' +
+        '<a class="btn sm ghost" href="' + esc(m.modello) + '" download>💾 modello.pt</a>' +
+        (m.prova ? '<a class="btn sm ghost" href="/viewer?job=' + esc(m.id) + '&pezzo=' +
+          encodeURIComponent(m.prova_pezzo || '') + '">▶ prova</a>' : '') +
+        '<a class="btn sm ghost" href="/api/job/' + esc(m.id) + '/file/log.txt">log</a>' +
+        '</div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="noteinfo">elenco dei modelli non disponibile (server spento?).</div>';
+  }
+}
+
+/** Tutto il materiale del progetto: documenti, pacchetti, prove, video, script. */
+async function caricaMateriale() {
+  const box = $('fileGruppi');
+  try {
+    const r = await fetch('/api/file');
+    const d = await r.json();
+    const gruppi = d.gruppi || [];
+    const tot = gruppi.reduce((a, g) => a + g.voci.length, 0);
+    $('materialeInfo').textContent = tot + ' file in ' + gruppi.length + ' gruppi · ' + d.base;
+    if (!tot) { box.innerHTML = '<div class="noteinfo">nessun file da mostrare.</div>'; return; }
+    box.innerHTML = gruppi.map((g, i) => {
+      const mb = g.voci.reduce((a, v) => a + v.mb, 0);
+      return '<details class="gruppoFile"' + (i === 0 ? ' open' : '') + '>' +
+        '<summary>' + esc(g.titolo) + ' <span style="color:var(--text2);font-size:11px">(' +
+        g.voci.length + ' file · ' + mb.toFixed(1) + ' MB)</span></summary><div class="voci">' +
+        g.voci.map((v) => {
+          const icona = ICONE[v.tipo] || '📄';
+          const apri = APRIBILI.includes(v.tipo);
+          return '<div class="voce"><span>' + icona + '</span>' +
+            '<span class="nm mono" title="' + esc(v.percorso) + '">' + esc(v.percorso) + '</span>' +
+            '<span class="mb">' + v.mb + ' MB</span>' +
+            (apri ? '<a href="' + esc(v.url) + '" target="_blank" rel="noopener">' +
+              (v.tipo === 'mp4' || v.tipo === 'mov' || v.tipo === 'mkv' ? '▶ guarda' : 'apri') +
+              '</a>' : '') +
+            '<a href="' + esc(v.url) + '" download>scarica</a></div>';
+        }).join('') + '</div></details>';
+    }).join('');
+  } catch (e) {
+    $('materialeInfo').textContent = 'elenco non disponibile';
+    box.innerHTML = '<div class="errbox">✘ Non riesco a leggere il catalogo: ' + esc(e.message) +
+      '</div>';
+  }
+}
+
+// ---------------------------------------- comandi delle due sezioni nuove
+$('scegliCorso').addEventListener('click', () => $('fileCorso').click());
+$('fileCorso').addEventListener('change', (e) => {
+  fileCorso = Array.from(e.target.files || []);
+  disegnaPezzi();
+  $('esitoCorso').innerHTML = '';
+});
+$('pulisciCorso').addEventListener('click', () => {
+  fileCorso = [];
+  $('fileCorso').value = '';
+  disegnaPezzi();
+  $('esitoCorso').innerHTML = '';
+});
+$('avviaAddestra').addEventListener('click', () => avviaAddestra(false));
+$('controllaAllinea').addEventListener('click', () => avviaAddestra(true));
+$('annullaAddestra').addEventListener('click', async () => {
+  if (!jobCorso) return;
+  $('annullaAddestra').disabled = true;
+  try { await fetch('/api/job/' + jobCorso + '/annulla', {method: 'POST'}); } catch (e) { /* fine */ }
+  logCorso('[web] chiesto di annullare il corso ' + jobCorso);
+});
+$('ricaricaFile').addEventListener('click', caricaMateriale);
+
+// ================================== AVVIO =================================
+caricaStato();
+caricaRuns();
+caricaModelli();
+caricaMateriale();
+log('[web] pronto: scegli un video di pianoforte e premi “Esegui la pipeline”.');
+log('[web] il primo avvio carica i pesi YOLO (qualche secondo); l’esecuzione può durare minuti.');
+</script>
+</body>
+</html>

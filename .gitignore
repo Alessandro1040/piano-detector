@@ -1,0 +1,46 @@
+# ---------------------------------------------------------------------------
+# Ambienti virtuali
+# ---------------------------------------------------------------------------
+.venv*/
+venv/
+env/
+
+# ---------------------------------------------------------------------------
+# Cache Python / macOS
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
+.ipynb_checkpoints/
+
+# ---------------------------------------------------------------------------
+# Esecuzioni e output generati dallo Studio web (rigenerabili, ~3 GB)
+# ---------------------------------------------------------------------------
+web_runs/
+out_test/
+out_test2/
+demo_output/
+*_preparato*.mp4
+*_preparato*.json
+*_preparato*.jpg
+*_griglia.mp4
+
+# ---------------------------------------------------------------------------
+# Backup e pacchetti pronti (rigenerabili)
+# ---------------------------------------------------------------------------
+_backup_files7_*/
+*.zip
+*.log
+
+# ---------------------------------------------------------------------------
+# Dataset e media pesanti (rigenerabili dalle sorgenti / non adatti a git)
+# ---------------------------------------------------------------------------
+pianovam_pezzi/
+pianovam_pezzi_ritagliati/
+VIDEO_PROBLEMA_griglia/
+PROVA_taglio_primo_piano/
+*.npz
+addestra_tasti/**/*.npz
+addestra_tasti/prova_1video/*.mp4
+addestra_tasti/prova_1video/dataset/

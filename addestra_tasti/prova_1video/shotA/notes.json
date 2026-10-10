@@ -1,0 +1,108 @@
+{
+  "video": "test_shotA.mp4",
+  "fps": 30.0,
+  "frame_totali": 122,
+  "durata_s": 4.067,
+  "larghezza": 1280,
+  "altezza": 720,
+  "estensione_tastiera": {
+    "prima_nota": 36,
+    "ultima_nota": 88,
+    "n_tasti": 53
+  },
+  "eventi": [],
+  "riepilogo": {
+    "n_eventi": 0,
+    "note_uniche": 0,
+    "note_al_secondo": 0.0,
+    "durata_media": 0.0,
+    "nota_piu_frequente": null,
+    "intervallo_midi": null
+  },
+  "motore": "prospettica",
+  "prospettica": {
+    "visibili": [
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71,
+      72,
+      73,
+      74,
+      75,
+      76,
+      77,
+      78,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84,
+      85,
+      86,
+      87,
+      88
+    ],
+    "emesse": [],
+    "ottava": {
+      "scelta": 36,
+      "ambigua": false,
+      "ipotesi_usata": null,
+      "candidate": [],
+      "scarto_ottave": 0,
+      "nota_gruppo2": 61,
+      "prova": {
+        "geometria_canonica": {
+          "wc": 100,
+          "hc": 100,
+          "banda_neri": [
+            0,
+            66
+          ],
+          "span_tastiera": [
+            -14.0,
+            17.0
+          ]
+        }
+      }
+    },
+    "soglie": {
+      "giu": 0.6,
+      "su": 0.4,
+      "finestra": 5
+    }
+  }
+}

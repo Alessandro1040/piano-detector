@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎹 Piano Studio — video → MIDI</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%8E%B9%3C/text%3E%3C/svg%3E">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg:#0a0a0f; --surface:#12121a; --surface2:#1a1a28; --border:#2a2a3a;
+    --accent:#00d4aa; --accent2:#7c3aed; --text:#e0e0e8; --text2:#8888a0;
+    --ok:#00d4aa; --warn:#f5a524; --err:#f43f5e;
+  }
+  body{background:var(--bg);color:var(--text);font:14px/1.5 'Segoe UI',system-ui,-apple-system,sans-serif}
+  .header{background:linear-gradient(135deg,#0f0f1a 0%,#1a0a2e 50%,#0a1a1a 100%);
+          border-bottom:1px solid var(--border);padding:18px 26px;display:flex;
+          align-items:center;gap:16px;flex-wrap:wrap}
+  .header-icon{font-size:36px}
+  .header h1{font-size:22px;font-weight:800;background:linear-gradient(90deg,var(--accent),var(--accent2),#f472b6);
+             -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  .header p{color:var(--text2);font-size:12.5px}
+  .badges{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+  .pill{border:1px solid var(--border);background:var(--surface);border-radius:20px;
+        padding:3px 11px;font-size:11.5px;color:var(--text2);white-space:nowrap}
+  .pill b{color:var(--text);font-weight:600}
+  .pill.ok{border-color:#1d6b58;color:var(--ok)}
+  .pill.no{border-color:#7a2636;color:var(--err)}
+  #quadCanvas{position:absolute;left:0;top:0;display:none;cursor:crosshair;z-index:3;
+              background:rgba(0,0,0,.10)}
+  #stage.hasegni #quadCanvas{display:block}
+  #stage.hasegni #preview{cursor:crosshair}
+  main{padding:18px 26px 60px;max-width:1500px;margin:0 auto}
+  .cols{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:18px;align-items:start}
+  @media (max-width:1150px){.cols{grid-template-columns:minmax(0,1fr)}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px}
+  .card h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);
+           margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .card h2 .n{background:var(--accent2);color:#fff;border-radius:50%;width:18px;height:18px;
+              display:inline-flex;align-items:center;justify-content:center;font-size:11px}
+  #stage{position:relative;background:#000;border:1px dashed var(--border);border-radius:10px;
+         min-height:200px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  #stage.dragover{border-color:var(--accent);background:#0d1b1a}
+  #stage.hasvideo{border-style:solid;border-color:var(--border)}
+  #preview{width:100%;max-height:400px;display:none;background:#000}
+  #dropbox{text-align:center;color:var(--text2);padding:26px}
+  #dropbox .big{font-size:32px;margin-bottom:6px}
+  .btn{font:inherit;color:var(--text);background:var(--surface2);border:1px solid var(--border);
+       border-radius:8px;padding:7px 13px;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:#46567a;background:#1f2637}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.primary{background:linear-gradient(135deg,var(--accent2),#a855f7);border-color:transparent;font-weight:600}
+  .btn.primary:hover{filter:brightness(1.15)}
+  .btn.danger{border-color:#7a2636;color:#ffb3c1}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:4px 9px;font-size:12px}
+  .frm{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  @media (max-width:640px){.frm{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .fld{display:flex;flex-direction:column;gap:4px}
+  .fld label{font-size:11.5px;color:var(--text2)}
+  .fld .hint{font-size:10.5px;color:#5f6b7d}
+  input[type=text],input[type=number],select{font:inherit;background:var(--surface2);
+       border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 9px;width:100%}
+  input:focus,select:focus{outline:none;border-color:var(--accent2)}
+  .checks{display:flex;flex-wrap:wrap;gap:14px;margin-top:12px;border-top:1px solid var(--border);padding-top:12px}
+  .checks label{display:flex;gap:6px;align-items:center;color:var(--text2);font-size:12.5px;cursor:pointer}
+  input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px}
+  .meta{color:var(--text2);font-size:12px;margin-top:10px;display:flex;gap:14px;flex-wrap:wrap}
+  #progressWrap{height:7px;background:var(--surface2);border-radius:5px;overflow:hidden;margin-top:12px}
+  #progressBar{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+  #progressBar.indet{width:35%;animation:slide 1.3s ease-in-out infinite}
+  @keyframes slide{0%{margin-left:-35%}100%{margin-left:100%}}
+  #log{background:#08080c;border:1px solid var(--border);border-radius:8px;padding:9px;
+       height:300px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+       font-size:11.5px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+  #log .t{color:#4a5568;margin-right:7px}
+  #log .w{color:var(--warn)} #log .e{color:var(--err)} #log .g{color:var(--accent)}
+  #log .web{color:#7c9cff}
+  .runs{max-height:190px;overflow:auto;font-size:12px}
+  .run{display:flex;gap:8px;align-items:center;padding:5px 6px;border-bottom:1px solid var(--border);cursor:pointer}
+  .run:hover{background:var(--surface2)}
+  .run .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .run .st{font-size:10.5px;border-radius:4px;padding:1px 6px;border:1px solid var(--border);white-space:nowrap}
+  .run .st.fatto{color:var(--ok);border-color:#1d6b58}
+  .run .st.in_corso{color:var(--warn);border-color:#6b5420}
+  .run .st.errore,.run .st.annullato{color:var(--err);border-color:#7a2636}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;margin-bottom:14px}
+  .stat{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:9px 11px}
+  .stat .k{font-size:10.5px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
+  .stat .v{font-size:19px;font-weight:700;color:var(--accent);margin-top:2px}
+  .stat .v.sm{font-size:14px}
+  .tabs{display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:12px;flex-wrap:wrap}
+  .tab{background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text2);
+       padding:7px 11px;cursor:pointer;font:inherit;font-size:12.5px}
+  .tab.on{color:var(--accent);border-bottom-color:var(--accent)}
+  .pane{display:none} .pane.on{display:block}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:4px 7px;border-bottom:1px solid var(--border)}
+  th{color:var(--text2);font-weight:500;position:sticky;top:0;background:var(--surface)}
+  #tabWrap{max-height:280px;overflow:auto}
+  .rollWrap{overflow-x:auto;background:#0d0d15;border:1px solid var(--border);border-radius:9px}
+  #roll{display:block}
+  .player{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+          background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-top:14px}
+  .playBtn{width:44px;height:44px;border-radius:50%;font-size:17px;display:flex;align-items:center;
+           justify-content:center;background:linear-gradient(135deg,var(--accent),#00a884);
+           border:none;color:#04211a;cursor:pointer;font-weight:700}
+  .playBtn:disabled{opacity:.4;cursor:not-allowed}
+  .ctl{display:flex;flex-direction:column;gap:2px}
+  .ctl span{font-size:10.5px;color:var(--text2)}
+  .ctl input[type=number],.ctl select{padding:4px 7px;font-size:12.5px;width:auto}
+  .clock{font-family:ui-monospace,monospace;font-size:13px;color:var(--accent);min-width:96px;text-align:center}
+  #kbd{margin-top:12px;position:relative;height:74px;background:#0d0d15;border:1px solid var(--border);
+       border-radius:8px;overflow:hidden}
+  #kbd canvas{display:block}
+  .noteinfo{font-size:12px;color:var(--text2);margin-top:8px;line-height:1.6}
+  code{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+       font-family:ui-monospace,monospace;font-size:12px}
+  .warnbox{background:#2a1f08;border:1px solid #6b5420;color:#ffd9a0;border-radius:8px;
+           padding:9px 11px;font-size:12.5px;margin-top:10px}
+  .errbox{background:#2a0d14;border:1px solid #7a2636;color:#ffb3c1;border-radius:8px;
+          padding:9px 11px;font-size:12.5px;margin-top:10px}
+  .okbox{background:#08221d;border:1px solid #1d6b58;color:#a8f0dd;border-radius:8px;
+         padding:9px 11px;font-size:12.5px;margin-top:10px}
+  .hidden{display:none!important}
+  .mono{font-family:ui-monospace,monospace}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="header-icon">🎹</div>
+  <div>
+    <h1>Piano Studio — video → MIDI</h1>
+    <p>Carica un video di pianoforte: la pipeline rileva tastiera e mani, produce <code>song.mid</code> e lo riproduce qui.</p>
+  </div>
+  <div class="badges">
+    <span class="pill" id="pillServer">server: <b>…</b></span>
+    <span class="pill" id="pillPython">pipeline: <b>…</b></span>
+    <span class="pill" id="pillFfmpeg">ffmpeg: <b>…</b></span>
+    <span class="pill" id="pillPesi">pesi: <b>…</b></span>
+    <span class="pill" id="pillPpan">PPAN: <b>…</b></span>
+    <span class="pill" id="pillDisk">disco: <b>…</b></span>
+  </div>
+</header>
+
+<main>
+<div class="cols">
+  <div>
+    <section class="card">
+      <h2><span class="n">1</span> Video di input</h2>
+      <div id="stage">
+        <video id="preview" controls playsinline></video>
+        <canvas id="quadCanvas" title="clicca i 4 angoli della tastiera"></canvas>
+        <div id="dropbox">
+          <div class="big">🎹</div>
+          <div>Trascina qui un video (mp4, mov, mkv, webm…) oppure</div>
+          <div style="margin-top:10px"><button class="btn" id="scegli">Scegli file…</button></div>
+          <div style="margin-top:8px;font-size:11.5px">tutto in locale: il file non lascia il tuo computer</div>
+        </div>
+      </div>
+      <input type="file" id="file" accept="video/*,.mkv,.mov,.mp4,.avi,.webm,.ts,.mts" class="hidden">
+      <div class="meta" id="fileMeta"></div>
+    </section>
+
+    <section class="card">
+      <h2><span class="n">2</span> Motore e parametri</h2>
+
+      <div class="frm">
+        <div class="fld" style="grid-column:span 2">
+          <label for="motore">Motore di trascrizione</label>
+          <select id="motore">
+            <option value="pipeline" selected>pipeline — YOLO + mani (geometria della tastiera e dita)</option>
+            <option value="ppan">PPAN — “Pay Attention to the Keys” (rete pretrainata dal video)</option>
+          </select>
+          <span class="hint" id="motoreHint">…</span>
+        </div>
+      </div>
+
+      <div id="gruppoPipeline">
+      <div class="frm" style="margin-top:12px">
+        <div class="fld">
+          <label for="modello">Modello YOLO</label>
+          <select id="modello">
+            <option value="yolov8m">yolov8m (veloce)</option>
+            <option value="yolov8l" selected>yolov8l (consigliato)</option>
+            <option value="yolov8x">yolov8x (massimo)</option>
+          </select>
+        </div>
+        <div class="fld">
+          <label for="conf">Soglia confidenza (--conf)</label>
+          <input type="number" id="conf" value="0.15" min="0.01" max="0.9" step="0.01">
+          <span class="hint">bassa = trova di più, più falsi positivi</span>
+        </div>
+        <div class="fld">
+          <label for="fpsMax">Frame al secondo elaborati (--fps-max)</label>
+          <input type="number" id="fpsMax" value="30" min="1" max="120" step="1">
+          <span class="hint">abbassalo per andare più veloce</span>
+        </div>
+        <div class="fld">
+          <label for="primaNota">Prima nota MIDI (--prima-nota)</label>
+          <input type="text" id="primaNota" placeholder="auto (stimata)">
+          <span class="hint">C2=36 · C3=48 · C4=60 · C5=72</span>
+        </div>
+        <div class="fld">
+          <label for="ultimaNota">Ultima nota MIDI (--ultima-nota)</label>
+          <input type="text" id="ultimaNota" placeholder="auto">
+          <span class="hint">usata solo se non indichi le ottave</span>
+        </div>
+        <div class="fld">
+          <label for="nOttave">Numero di ottave (--n-ottave)</label>
+          <input type="text" id="nOttave" placeholder="auto">
+          <span class="hint">ha priorità su “ultima nota”</span>
+        </div>
+        <div class="fld">
+          <label for="tracker">Tracker della tastiera</label>
+          <select id="tracker">
+            <option value="template" selected>template</option>
+            <option value="mil">mil</option>
+          </select>
+        </div>
+        <div class="fld">
+          <label for="redetect">Rilevazione piena ogni N frame</label>
+          <input type="number" id="redetect" value="30" min="1" step="1">
+        </div>
+        <div class="fld">
+          <label for="limite">Limite frame (--limite)</label>
+          <input type="text" id="limite" placeholder="tutti i frame">
+          <span class="hint">metti 120 per una prova rapida</span>
+        </div>
+      </div>
+      <div class="checks">
+        <label><input type="checkbox" id="senzaMani"> senza mani (solo griglia, veloce)</label>
+        <label><input type="checkbox" id="debugVideo" checked> salva debug.mp4</label>
+        <label><input type="checkbox" id="senzaProspettiva"> disattiva raddrizzamento prospettico</label>
+      </div>
+      <div class="warnbox">
+        <b>Nota sull’altezza delle note.</b> Da una sola camera l’<i>ottava assoluta</i> è stimata:
+        se il MIDI risulta trasposto, imposta <code>--prima-nota</code> sul Do più a sinistra che vedi
+        (es. 48 = C3, 60 = C4). Con <code>--senza-mani</code> non ci sono note: serve solo a controllare la griglia.
+      </div>
+      </div><!-- /gruppoPipeline -->
+
+      <div id="gruppoPpan" class="hidden">
+        <div class="frm" style="margin-top:12px">
+          <div class="fld" style="grid-column:span 3">
+            <label for="ppanDir">Cartella PPAN (motore + pesi)</label>
+            <input type="text" id="ppanDir" placeholder="~/.cline/…/pianovision-ppan">
+            <span class="hint">deve contenere <code>ppan_infer.py</code> e <code>weights/pytorch_model.bin</code></span>
+          </div>
+          <div class="fld">
+            <label for="ppanStart">Inizio analisi (s) — <code>--start</code></label>
+            <input type="number" id="ppanStart" min="0" step="0.1" placeholder="0">
+          </div>
+          <div class="fld">
+            <label for="ppanMaxSec">Durata analizzata (s) — <code>--max-seconds</code></label>
+            <input type="number" id="ppanMaxSec" min="0.1" step="0.1" placeholder="tutto il video">
+          </div>
+          <div class="fld">
+            <label for="ppanBatch">Finestre per batch — <code>--batch-size</code></label>
+            <input type="number" id="ppanBatch" min="1" max="64" step="1" placeholder="16">
+          </div>
+          <div class="fld">
+            <label for="ppanMinNote">Durata minima nota (s) — <code>--min-note</code></label>
+            <input type="text" id="ppanMinNote" placeholder="0">
+            <span class="hint">es. 0,05 toglie i “bip” da due frame</span>
+          </div>
+          <div class="fld">
+            <label for="ppanCropFrames">Frame per stimare il ritaglio — <code>--crop-frames</code></label>
+            <input type="number" id="ppanCropFrames" min="1" max="30" step="1" placeholder="5">
+          </div>
+          <div class="fld">
+            <label for="ppanThrOnset">Soglia onset — <code>--threshold-onset</code></label>
+            <input type="text" id="ppanThrOnset" placeholder="0.50">
+          </div>
+          <div class="fld">
+            <label for="ppanThrFrame">Soglia frame — <code>--threshold-frame</code></label>
+            <input type="text" id="ppanThrFrame" placeholder="0.50">
+          </div>
+          <div class="fld">
+            <label for="ppanSigmaOnset">Sigma onset — <code>--sigma-onsets</code></label>
+            <input type="text" id="ppanSigmaOnset" placeholder="0.20">
+          </div>
+          <div class="fld">
+            <label for="ppanSigmaFrame">Sigma frame — <code>--sigma-frames</code></label>
+            <input type="text" id="ppanSigmaFrame" placeholder="0.80">
+            <span class="hint">vuoto = valori del paper</span>
+          </div>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="ppanFramesOnly"> testa “frame”: note tenute fino al rilascio</label>
+        </div>
+        <div class="meta" style="margin-top:10px">
+          <button class="btn" id="btnQuad" type="button">🎯 Segna i 4 angoli sul video</button>
+          <button class="btn ghost" id="btnQuadAuto" type="button">↺ auto</button>
+          <span class="mono" id="quadTxt" style="font-size:11.5px;color:var(--text2)">ritaglio: automatico (PPAN trova la tastiera)</span>
+        </div>
+        <input type="hidden" id="ppanQuad" value="">
+        <div class="warnbox">
+          <b>Come funziona PPAN.</b> La tastiera viene ritagliata e raddrizzata in una striscia di
+          <b>88 tasti</b>, poi la rete predice il piano roll: non guarda le dita, quindi funziona anche
+          con inquadrature oblique o mani fuori campo. Il <b>ritaglio è la cosa che conta di più</b>:
+          se il risultato è scarso, clicca i 4 angoli della tastiera (l’ordine viene sistemato da solo)
+          e rilancia: con la stima automatica può capitare che il riquadro prenda lo <b>spartito</b>
+          invece dei tasti, e in quel caso il job finisce senza nemmeno una nota.
+          <br><b>Tutta la tastiera in campo:</b> la striscia vale sempre <b>88 tasti</b> (A0–C8),
+          quindi le altezze sono affidabili solo se l’inquadratura contiene la tastiera intera.
+          Su un video che ne mostra solo una parte le note ci sono ma le altezze no.
+          Il modello lavora a <b>30 fps fissi</b> nel venv del progetto PPAN (torch +
+          transformers): il primo avvio carica i pesi in ~5 s, poi costa circa <b>1 s per secondo di video</b>.
+          <br><b>Normalizzazione ffmpeg:</b> lasciala attiva solo per <code>.mov</code>/HEVC o video
+          ruotati. Su un mp4 già compresso la ri-codifica peggiora le note (misurato: 3 note sul file
+          originale, 1 dopo la normalizzazione).
+        </div>
+      </div><!-- /gruppoPpan -->
+
+      <div class="checks">
+        <label><input type="checkbox" id="normalizza" checked> normalizza con ffmpeg (.mov/HEVC/rotazione)</label>
+        <label><input type="checkbox" id="eliminaInput" checked> elimina il video caricato a fine elaborazione</label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2><span class="n">3</span> Esecuzione</h2>
+      <div class="meta" style="margin-top:0">
+        <button class="btn primary" id="esegui" disabled>▶ Esegui la pipeline</button>
+        <button class="btn danger" id="annulla" disabled>■ Annulla</button>
+        <button class="btn ghost" id="pulisci" title="elimina i file temporanei di questa esecuzione">🗑 Pulisci</button>
+        <span id="statoTxt" class="mono" style="color:var(--text2)">in attesa di un video…</span>
+      </div>
+      <div id="progressWrap"><div id="progressBar"></div></div>
+      <div class="meta" id="runMeta"></div>
+      <div id="esitoBox"></div>
+    </section>
+  </div>
+
+  <div>
+    <section class="card">
+      <h2>Log della pipeline</h2>
+      <div class="meta" style="margin:0 0 8px">
+        <button class="btn sm ghost" id="copiaLog">copia log</button>
+        <span id="logCount" class="mono" style="color:var(--text2);font-size:11.5px"></span>
+      </div>
+      <div id="log"></div>
+    </section>
+
+    <section class="card">
+      <h2>Esecuzioni precedenti</h2>
+      <div class="runs" id="runs"><span style="color:var(--text2)">nessuna esecuzione</span></div>
+    </section>
+  </div>
+</div>
+
+<section class="card hidden" id="results">
+  <h2>Risultati</h2>
+  <div class="stats" id="stats"></div>
+
+  <div class="tabs">
+    <button class="tab on" data-pane="paneNote">📋 Note</button>
+    <button class="tab" data-pane="paneRoll">🎼 Piano roll e riproduzione</button>
+    <button class="tab" id="tabGriglia" data-pane="paneGriglia">🖼 Griglia sui tasti</button>
+    <button class="tab" id="tabDebug" data-pane="paneDebug">🎬 debug.mp4</button>
+    <button class="tab" data-pane="paneFile">💾 File e MIDI</button>
+  </div>
+
+  <div class="pane on" id="paneNote">
+    <div id="tabWrap"><table id="tabNote"><thead><tr>
+      <th>#</th><th>nota</th><th>MIDI</th><th>onset</th><th>offset</th><th>durata</th><th>vel</th><th>mano</th>
+    </tr></thead><tbody></tbody></table></div>
+    <div class="noteinfo" id="noteInfo"></div>
+  </div>
+
+  <div class="pane" id="paneRoll">
+    <div class="player">
+      <button class="playBtn" id="playBtn" disabled title="riproduci / pausa">▶</button>
+      <button class="btn sm" id="stopBtn" title="torna all'inizio">■</button>
+      <span class="clock" id="clock">0:00 / 0:00</span>
+      <div class="ctl"><span>strumento</span>
+        <select id="instr">
+          <option value="piano" selected>pianoforte</option>
+          <option value="epiano">piano elettrico</option>
+          <option value="organ">organo</option>
+          <option value="synth">synth</option>
+        </select></div>
+      <div class="ctl"><span>volume</span><input type="range" id="vol" min="0" max="1" step="0.01" value="0.75" style="width:110px"></div>
+      <div class="ctl"><span>battute (griglia)</span><input type="number" id="tempo" min="30" max="300" value="120" style="width:78px"></div>
+      <label class="checks" style="border:none;padding:0;margin:0"><input type="checkbox" id="loopChk"> loop</label>
+      <span class="mono" id="smfInfo" style="color:var(--text2);font-size:11.5px"></span>
+    </div>
+    <div class="rollWrap" style="margin-top:12px"><canvas id="roll"></canvas></div>
+    <div id="kbd"><canvas id="kbdCanvas"></canvas></div>
+    <div class="noteinfo">Suono sintetizzato in locale (Web Audio), nessun file audio scaricato:
+      il player <b>legge davvero <code>song.mid</code></b> (parser Standard MIDI File scritto in JS).</div>
+  </div>
+
+  <div class="pane" id="paneGriglia">
+    <img id="grigliaImg" style="max-width:100%;border-radius:9px;border:1px solid var(--border)">
+    <div class="noteinfo" id="grigliaInfo"></div>
+  </div>
+
+  <div class="pane" id="paneDebug">
+    <video id="debugVid" controls playsinline style="max-width:100%;border-radius:9px;border:1px solid var(--border)"></video>
+  </div>
+
+  <div class="pane" id="paneFile">
+    <div class="meta" style="margin-top:0">
+      <a class="btn" id="dlMidi" download="song.mid">⬇ scarica song.mid</a>
+      <a class="btn" id="dlJson" download="notes.json">⬇ scarica notes.json</a>
+      <a class="btn" id="dlPpan" download="notes_ppan.json">⬇ notes_ppan.json (grezzo PPAN)</a>
+      <a class="btn" id="dlGriglia" download="prima_griglia.jpg">⬇ prima_griglia.jpg</a>
+      <a class="btn" id="dlDebug" download="debug.mp4">⬇ debug.mp4</a>
+    </div>
+    <div class="noteinfo" id="fileInfo"></div>
+    <div class="mono" id="hexMid" style="font-size:11px;color:var(--text2);white-space:pre-wrap;margin-top:8px"></div>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+let fileVideo = null, objectUrl = null, jobId = null, jobCorrente = null;
+let t0 = 0, timerPoll = null, timerTick = null, nLog = 0, pesiOk = true;
+let ppanOk = false;          // motore PPAN disponibile (pesi + script + ponte)
+
+const fmtT = (s) => { s = Math.max(0, s || 0); const m = Math.floor(s / 60);
+  return m + ':' + String(Math.floor(s % 60)).padStart(2, '0'); };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const MB = (b) => (b / 1048576).toFixed(1);
+const statoMsg = (s) => { $('statoTxt').textContent = s; };
+const elapsed = () => t0 ? ((Date.now() - t0) / 1000) : 0;
+
+function log(msg, tipo) {
+  const el = $('log');
+  const div = document.createElement('div');
+  const s = String(msg == null ? '' : msg);
+  let cls = '';
+  if (tipo === 'e' || /^\[ERRORE\]|Traceback|Exception|eccezione|^Error/i.test(s)) cls = 'e';
+  else if (tipo === 'w' || /^\[AVVISO\]/.test(s)) cls = 'w';
+  else if (/^\[web\]/.test(s)) cls = 'web';
+  else if (/^\[griglia\]|^\[video\]|^===|^eventi nota|^estensione/.test(s)) cls = 'g';
+  div.innerHTML = '<span class="t">' + new Date().toLocaleTimeString('it-IT', {hour12:false}) +
+                  '</span><span class="' + cls + '">' + esc(s) + '</span>';
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+  nLog++;
+  $('logCount').textContent = nLog + ' righe';
+}
+
+async function caricaStato() {
+  try {
+    const r = await fetch('/api/stato');
+    const d = await r.json();
+    $('pillServer').className = 'pill ok';
+    $('pillServer').innerHTML = 'server: <b>attivo</b>';
+    $('pillPython').className = 'pill ' + (d.python_progetto ? 'ok' : 'no');
+    $('pillPython').innerHTML = 'pipeline: <b>' + esc(d.python.split('/').slice(-2).join('/')) + '</b>';
+    $('pillFfmpeg').className = 'pill ' + (d.ffmpeg ? 'ok' : 'no');
+    $('pillFfmpeg').innerHTML = 'ffmpeg: <b>' + (d.ffmpeg ? 'ok' : 'assente') + '</b>';
+    $('pillDisk').className = 'pill ' + (d.spazio.libero_gb > 2 ? 'ok' : 'no');
+    $('pillDisk').innerHTML = 'disco: <b>' + d.spazio.libero_gb + ' GB</b>';
+    popolaModelli(d.pesi_yolo);
+    aggiornaPpan(d.ppan);
+    if (!d.modello_mani) log('hand_landmarker.task assente in weights/: il ramo mani non partira', 'w');
+    if (!d.python_progetto)
+      log('nessun venv del progetto trovato: la pipeline usara ' + d.python +
+          '. Senza mediapipe il ramo mani fallira (usa “senza mani” per provare la griglia).', 'w');
+  } catch (e) {
+    $('pillServer').className = 'pill no';
+    $('pillServer').innerHTML = 'server: <b>irraggiungibile</b>';
+    log('server non raggiungibile: avvia `python3 pipeline_web.py`', 'e');
+  }
+}
+
+// ------------------------------------------------------ scelta del video
+function impostaFile(f) {
+  if (!f) return;
+  fileVideo = f;
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  objectUrl = URL.createObjectURL(f);
+  const v = $('preview');
+  v.src = objectUrl;
+  v.style.display = 'block';
+  v.onloadedmetadata = () => {
+    const dur = isFinite(v.duration) ? v.duration : 0;
+    const extra = dur > 0 ? '<span>durata: <b>' + dur.toFixed(1) + ' s</b></span>' +
+                            '<span>risoluzione: <b>' + v.videoWidth + '×' + v.videoHeight + '</b></span>' : '';
+    $('fileMeta').innerHTML = '<span><b>' + esc(f.name) + '</b></span><span>' + MB(f.size) + ' MB</span>' + extra;
+    posizionaTela();
+  };
+  $('dropbox').style.display = 'none';
+  $('stage').classList.add('hasvideo');
+  $('fileMeta').innerHTML = '<span><b>' + esc(f.name) + '</b></span><span>' + MB(f.size) + ' MB</span>';
+  if (punti.length) {                     // gli angoli valevano per il video precedente
+    punti = [];
+    $('ppanQuad').value = '';
+    log('[web] nuovo video: angoli del ritaglio PPAN azzerati', 'w');
+  }
+  aggiornaPulsanti();
+  posizionaTela();
+  statoMsg('video pronto');
+}
+
+const stage = $('stage');
+stage.addEventListener('dragover', (e) => { e.preventDefault(); stage.classList.add('dragover'); });
+stage.addEventListener('dragleave', () => stage.classList.remove('dragover'));
+stage.addEventListener('drop', (e) => {
+  e.preventDefault();
+  stage.classList.remove('dragover');
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) impostaFile(f);
+});
+$('scegli').addEventListener('click', () => $('file').click());
+$('stage').addEventListener('click', (e) => { if (!fileVideo) $('file').click(); });
+$('file').addEventListener('change', (e) => impostaFile(e.target.files[0]));
+
+// ------------------------------------------- disponibilità dei modelli
+const ETICHETTA_MODELLO = {yolov8m: 'yolov8m (veloce)', yolov8l: 'yolov8l (consigliato)',
+                           yolov8x: 'yolov8x (massimo)'};
+const WGET = 'wget https://github.com/ultralytics/assets/releases/download/v8.3.0/';
+
+function popolaModelli(pesi) {
+  if (!pesi) return;
+  const sel = $('modello');
+  const ordine = ['yolov8l', 'yolov8m', 'yolov8x'];
+  sel.innerHTML = '';
+  let disponibili = 0, scelto = '';
+  for (const nome of ordine) {
+    const p = pesi[nome] || {esiste: false, valido: false, mb: 0};
+    const op = document.createElement('option');
+    op.value = nome;
+    if (p.valido) {
+      op.textContent = ETICHETTA_MODELLO[nome] + ' · ' + p.mb + ' MB';
+      disponibili++;
+      if (!scelto) scelto = nome;
+    } else {
+      op.textContent = ETICHETTA_MODELLO[nome] + ' — ' + (p.esiste ? 'file corrotto' : 'assente');
+      op.disabled = true;
+      log('pesi ' + nome + ': ' + (p.esiste ? 'file corrotto o troncato' : 'file assente') +
+          ' (' + p.mb + ' MB). Per riscaricarli: ' + WGET + nome + '-oiv7.pt -P weights/',
+          p.esiste ? 'e' : 'w');
+    }
+    sel.appendChild(op);
+  }
+  pesiOk = !!scelto;
+  if (scelto) {
+    sel.value = scelto;
+    $('pillPesi').className = 'pill ok';
+    $('pillPesi').innerHTML = 'pesi: <b>' + disponibili + '/' + ordine.length + ' ok</b>';
+  } else {
+    $('pillPesi').className = 'pill no';
+    $('pillPesi').innerHTML = 'pesi: <b>nessuno utilizzabile</b>';
+    aggiornaPulsanti();
+    $('esitoBox').innerHTML = '<div class="errbox">✘ Nessun modello YOLO utilizzabile in ' +
+      '<code>weights/</code>: scarica almeno <code>yolov8l-oiv7.pt</code> con il comando ' +
+      'indicato nel log.</div>';
+  }
+}
+
+// ------------------------------------------------ motore PPAN (secondo motore)
+function motoreScelto() { return ($('motore').value || 'pipeline').toLowerCase(); }
+
+function aggiornaPulsanti() {
+  // il pulsante dipende dal motore: la pipeline vuole i pesi YOLO, PPAN i suoi
+  const pronto = motoreScelto() === 'ppan' ? ppanOk : pesiOk;
+  $('esegui').disabled = !fileVideo || !pronto;
+}
+
+function aggiornaPpan(p) {
+  if (!p) return;
+  ppanOk = !!p.pronto;
+  $('pillPpan').className = 'pill ' + (ppanOk ? 'ok' : 'no');
+  $('pillPpan').innerHTML = 'PPAN: <b>' + (ppanOk ? 'pronto · ' + p.pesi_mb + ' MB' : 'non disponibile') + '</b>';
+  $('ppanDir').value = p.dir || '';
+  const op = $('motore').querySelector('option[value="ppan"]');
+  op.disabled = !ppanOk;
+  op.textContent = 'PPAN — “Pay Attention to the Keys” (rete pretrainata dal video)' +
+                   (ppanOk ? '' : ' — non disponibile');
+  if (ppanOk) {
+    log('[web] motore PPAN pronto: pesi ' + p.pesi_mb + ' MB in ' + p.dir +
+        ' (' + (p.interprete_venv ? 'venv dedicato' : 'interprete della pipeline') + ')');
+  } else {
+    log('motore PPAN non disponibile in ' + (p.dir || '?') + ': servono ppan_infer.py, ' +
+        'weights/pytorch_model.bin, weights/config.json e ppan_bridge.py nella cartella del ' +
+        'progetto PPAN (PianoviVision-PPAN).', 'w');
+  }
+  aggiornaMotore();
+}
+
+function aggiornaMotore() {
+  const ppan = motoreScelto() === 'ppan';
+  $('gruppoPipeline').classList.toggle('hidden', ppan);
+  $('gruppoPpan').classList.toggle('hidden', !ppan);
+  $('esegui').textContent = ppan ? '▶ Analizza con PPAN' : '▶ Esegui la pipeline';
+  $('tabGriglia').innerHTML = ppan ? '🖼 Ritaglio usato da PPAN' : '🖼 Griglia sui tasti';
+  $('motoreHint').innerHTML = ppan
+    ? 'PPAN ritaglia la tastiera e predice il piano roll: non usa le dita, regge le inquadrature oblique.'
+    : 'pipeline: YOLO trova la tastiera, mediapipe segue le dita; ‘prima nota’ corregge l’ottava.';
+  if (!ppan) disattivaEditor();
+  aggiornaPulsanti();
+}
+
+// ---------------------------------- editor dei 4 angoli (per il motore PPAN)
+let punti = [];                  // angoli in pixel del video originale
+let editorOn = false, giu = null;
+const ETICHETTE = ['alto-sx', 'alto-dx', 'basso-dx', 'basso-sx'];
+
+const tela = () => $('quadCanvas');
+
+function scalaTela() {           // pixel del video per pixel CSS della tela
+  const c = tela();
+  const larghezza = parseFloat(c.style.width) || 0;
+  return ($('preview').videoWidth && larghezza) ? $('preview').videoWidth / larghezza : 1;
+}
+
+function posizionaTela() {
+  const v = $('preview'), c = tela();
+  if (!v.videoWidth) return;
+  const rv = v.getBoundingClientRect(), rs = $('stage').getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  c.style.left = (rv.left - rs.left) + 'px';
+  c.style.top = (rv.top - rs.top) + 'px';
+  c.style.width = rv.width + 'px';
+  c.style.height = rv.height + 'px';
+  c.width = Math.max(1, Math.round(rv.width * dpr));
+  c.height = Math.max(1, Math.round(rv.height * dpr));
+  ridisegna();
+}
+
+function ordinaQuad(p) {
+  // ordine ciclico attorno al centro, poi si parte dall'angolo più in alto a sinistra:
+  // PPAN vuole alto-sx, alto-dx, basso-dx, basso-sx (altrimenti la prospettiva si ribalta)
+  const cx = p.reduce((s, q) => s + q[0], 0) / p.length;
+  const cy = p.reduce((s, q) => s + q[1], 0) / p.length;
+  const g = p.slice().sort((a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx));
+  let primo = 0;
+  g.forEach((q, k) => { if (q[0] + q[1] < g[primo][0] + g[primo][1]) primo = k; });
+  return g.slice(primo).concat(g.slice(0, primo));
+}
+
+function ridisegna(riordina) {
+  const c = tela(), ctx = c.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  if (riordina !== false && punti.length === 4) punti = ordinaQuad(punti);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, c.width, c.height);
+  const s = 1 / scalaTela();     // pixel CSS per pixel del video
+  const cs = punti.map(([x, y]) => [x * s, y * s]);
+  if (cs.length > 1) {
+    ctx.beginPath();
+    ctx.moveTo(cs[0][0], cs[0][1]);
+    for (let i = 1; i < cs.length; i++) ctx.lineTo(cs[i][0], cs[i][1]);
+    if (cs.length === 4) {
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0,230,168,.14)';
+      ctx.fill();
+    }
+    ctx.strokeStyle = '#00e6a8'; ctx.lineWidth = 2; ctx.stroke();
+  }
+  cs.forEach(([x, y], i) => {
+    ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffd166'; ctx.fill();
+    ctx.fillStyle = '#0a0a0f'; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(String(i + 1), x, y + 3.5);
+    if (cs.length === 4) {
+      ctx.fillStyle = '#ffd166'; ctx.font = '600 11px system-ui'; ctx.textAlign = 'left';
+      ctx.fillText(ETICHETTE[i], x + 9, y + 4);
+    }
+  });
+  salvaQuad();
+}
+
+function salvaQuad() {
+  const completo = punti.length === 4;
+  $('ppanQuad').value = completo ? ordinaQuad(punti).map(([x, y]) => x + ',' + y).join(' ') : '';
+  $('quadTxt').textContent = completo
+    ? '4 angoli: ' + $('ppanQuad').value
+    : (punti.length ? 'angoli segnati: ' + punti.length + '/4 — continua a cliccare sulla tastiera'
+                    : (editorOn ? 'clicca i 4 angoli della tastiera (poi trascinali per correggerli)'
+                                : 'ritaglio: automatico (PPAN trova la tastiera)'));
+}
+
+function pixelVideo(ev) {
+  const v = $('preview'), r = v.getBoundingClientRect();
+  const k = v.videoWidth ? v.videoWidth / r.width : 1;
+  return [Math.round(Math.max(0, Math.min(v.videoWidth - 1, (ev.clientX - r.left) * k))),
+          Math.round(Math.max(0, Math.min(v.videoHeight - 1, (ev.clientY - r.top) * k)))];
+}
+
+function attivaEditor(on) {
+  if (on && !fileVideo) { log('[web] carica prima un video, poi segna gli angoli', 'w'); return; }
+  editorOn = on;
+  $('stage').classList.toggle('hasegni', on);
+  $('btnQuad').textContent = on ? '✔ Fine' : '🎯 Segna i 4 angoli sul video';
+  if (on) {
+    posizionaTela();
+    log('[web] clicca i 4 angoli della tastiera sul video: l’ordine viene sistemato da solo');
+  }
+  ridisegna();
+}
+
+function disattivaEditor() {
+  editorOn = false;
+  $('stage').classList.remove('hasegni');
+  $('btnQuad').textContent = '🎯 Segna i 4 angoli sul video';
+}
+
+tela().addEventListener('pointerdown', (ev) => {
+  if (!editorOn) return;
+  const [x, y] = pixelVideo(ev);
+  const soglia = 12 * scalaTela();
+  const k = punti.findIndex(([px, py]) => Math.hypot(px - x, py - y) <= soglia);
+  giu = {k};
+  if (k >= 0) { tela().setPointerCapture(ev.pointerId); ev.preventDefault(); }
+});
+tela().addEventListener('pointermove', (ev) => {
+  if (!editorOn || !giu || giu.k < 0) return;
+  punti[giu.k] = pixelVideo(ev);
+  ridisegna(false);
+});
+tela().addEventListener('pointerup', (ev) => {
+  if (!editorOn || !giu) return;
+  const trascinato = giu.k >= 0;
+  giu = null;
+  if (trascinato) { ridisegna(); return; }
+  if (punti.length >= 4) punti = [];                 // un 5° clic ricomincia
+  punti.push(pixelVideo(ev));
+  ridisegna();
+  if (punti.length === 4) log('[web] 4 angoli registrati: ' + $('ppanQuad').value);
+});
+$('btnQuad').addEventListener('click', () => attivaEditor(!editorOn));
+$('btnQuadAuto').addEventListener('click', () => {
+  punti = [];
+  disattivaEditor();
+  ridisegna();
+  log('[web] ritaglio PPAN: automatico (nessun angolo passato al modello)');
+});
+$('motore').addEventListener('change', aggiornaMotore);
+if (window.ResizeObserver) new ResizeObserver(() => { if ($('preview').videoWidth) posizionaTela(); }).observe($('preview'));
+window.addEventListener('resize', () => { if ($('preview').videoWidth) posizionaTela(); });
+aggiornaMotore();
+</script>
+
+<script>
+// --------------------------------------------------- avvio e avanzamento
+function avviaTimer() {
+  t0 = Date.now();
+  clearInterval(timerTick);
+  timerTick = setInterval(() => {
+    if ($('statoTxt').textContent.startsWith('in corso') ||
+        $('statoTxt').textContent.indexOf('caricamento') >= 0)
+      statoMsg($('statoTxt').textContent.replace(/\(.*\)/, '') + '(' + elapsed().toFixed(0) + ' s)');
+  }, 1000);
+}
+function fineTimer() { clearInterval(timerTick); timerTick = null; }
+
+function setProgresso(frazione) {
+  const b = $('progressBar');
+  if (frazione === null || frazione === undefined) {
+    b.classList.add('indet');
+    b.style.width = '';
+  } else {
+    b.classList.remove('indet');
+    b.style.width = Math.max(0, Math.min(1, frazione)) * 100 + '%';
+  }
+}
+
+function renderLog(righe) {
+  if (!righe) return;
+  if (righe.length < nLog) { $('log').innerHTML = ''; nLog = 0; }
+  for (let i = nLog; i < righe.length; i++) log(righe[i].s);
+}
+
+function renderMeta(d) {
+  const m = d.meta || {};
+  const pezzi = [];
+  if (m.larghezza) pezzi.push('video ' + m.larghezza + '×' + m.altezza);
+  if (m.fps) pezzi.push('fps ' + m.fps.toFixed(3));
+  if (m.frame_totali) pezzi.push(m.frame_totali + ' frame nel file');
+  if (m.passo) pezzi.push('passo ' + m.passo);
+  if (m.ffmpeg) pezzi.push('ffmpeg: ' + esc(m.ffmpeg));
+  if (m.motore === 'ppan') {
+    pezzi.push('motore PPAN' + (m.device ? ' (' + m.device + ')' : ''));
+    if (m.ppan_tastiera && m.ppan_tastiera.n_tasti)
+      pezzi.push('tastiera ' + m.ppan_tastiera.n_tasti + ' tasti da ' +
+                 nomeNota(m.ppan_tastiera.prima_nota));
+    if (m.crop) pezzi.push('striscia ' + esc(m.crop));
+  }
+  if (m.prima_nota !== undefined)
+    pezzi.push('tastiera stimata ' + nomeNota(m.prima_nota) + '–' + nomeNota(m.ultima_nota) +
+               ' (' + m.prima_nota + '–' + m.ultima_nota + ')');
+  $('runMeta').innerHTML = pezzi.map((p) => '<span>' + p + '</span>').join('');
+}
+
+function esito(tipo, d) {
+  const classe = tipo === 'ok' ? 'okbox' : (tipo === 'warn' ? 'warnbox' : 'errbox');
+  let html = '';
+  if (tipo === 'ok') {
+    const r = d.riepilogo || {};
+    html = '✔ Completato in ' + elapsed().toFixed(0) + ' s · ' + (d.meta && d.meta.frame_totali || '?') +
+           ' frame nel file · <b>' + (r.n_eventi || 0) + ' eventi nota</b>';
+    if (!r.n_eventi) {
+      html += '<br>Il MIDI è valido ma <b>vuoto</b>: ' + ((d.meta || {}).motore === 'ppan'
+        ? 'PPAN non ha riconosciuto pressioni. Apri la scheda <b>«Ritaglio usato da PPAN»</b>: se la ' +
+          'striscia non contiene la tastiera (o la contiene storta), segna i 4 angoli e rilancia; poi ' +
+          'prova ad abbassare la soglia onset.'
+        : 'nel video non è stata riconosciuta nessuna pressione. Prova con <b>--senza-mani</b> per ' +
+          'verificare la griglia, o abbassa la soglia di confidenza.');
+    }
+    if ((d.meta || {}).avviso)
+      html += '<br><span style="color:var(--warn)">⚠ ' + esc(d.meta.avviso) + '</span>';
+    if ((d.meta || {}).motore !== 'ppan' && ppanOk)
+      html += '<br><button class="btn sm" onclick="riprovaConPpan()">🎯 Riprova questo video ' +
+              'con PPAN (rete pretrainata)</button>';
+  } else if (tipo === 'warn') {
+    html = '■ Esecuzione annullata' + (d.input_eliminato ? ' (video di input eliminato)' : '');
+  } else {
+    html = '✘ Errore: ' + esc(d.errore || 'vedi il log');
+  }
+  if (d.codice_uscita !== undefined && d.codice_uscita !== null && tipo !== 'ok')
+    html += '<br><span class="mono">codice di uscita: ' + d.codice_uscita + '</span>';
+  $('esitoBox').innerHTML = '<div class="' + classe + '">' + html + '</div>';
+}
+
+function riprovaConPpan() {
+  if (!ppanOk) { log('[web] motore PPAN non disponibile', 'w'); return; }
+  if (!fileVideo) { log('[web] il video non è più in memoria: ricaricalo', 'w'); return; }
+  $('motore').value = 'ppan';
+  aggiornaMotore();
+  log('[web] rilancio lo stesso video con PPAN');
+  esegui();
+}
+
+async function esegui() {
+  if (!fileVideo) return;
+  const ppan = motoreScelto() === 'ppan';
+  if (ppan && !ppanOk) {
+    $('esitoBox').innerHTML = '<div class="errbox">✘ Motore PPAN non disponibile: controlla la ' +
+      'cartella PPAN (<code>ppan_infer.py</code> + <code>weights/</code>) oppure passa alla pipeline.</div>';
+    log('[web] motore PPAN non disponibile', 'e');
+    return;
+  }
+  const fd = new FormData();
+  fd.append('video', fileVideo, fileVideo.name);
+  const testi = {motore: 'motore', modello: 'modello', conf: 'conf', fps_max: 'fpsMax',
+                 tracker: 'tracker', redetect: 'redetect', prima_nota: 'primaNota',
+                 ultima_nota: 'ultimaNota', n_ottave: 'nOttave', limite: 'limite',
+                 ppan_dir: 'ppanDir', ppan_quad: 'ppanQuad', ppan_start: 'ppanStart',
+                 ppan_max_seconds: 'ppanMaxSec', ppan_batch: 'ppanBatch',
+                 ppan_crop_frames: 'ppanCropFrames', ppan_min_note: 'ppanMinNote',
+                 ppan_thr_onset: 'ppanThrOnset', ppan_thr_frame: 'ppanThrFrame',
+                 ppan_sigma_onsets: 'ppanSigmaOnset', ppan_sigma_frames: 'ppanSigmaFrame'};
+  for (const k in testi) fd.append(k, ($(testi[k]).value || '').trim());
+  const flag = {senza_mani: 'senzaMani', debug_video: 'debugVideo', normalizza: 'normalizza',
+                elimina_input: 'eliminaInput', senza_prospettiva: 'senzaProspettiva',
+                ppan_frames_only: 'ppanFramesOnly'};
+  for (const k in flag) fd.append(k, $(flag[k]).checked ? '1' : '0');
+
+  $('log').innerHTML = ''; nLog = 0; $('esitoBox').innerHTML = '';
+  $('results').classList.add('hidden');
+  fermaAudio();
+  log('[web] motore: ' + (ppan ? 'PPAN — ' + $('ppanDir').value : 'pipeline (YOLO + mani)'));
+  if (ppan) log('[web] ritaglio: ' + ($('ppanQuad').value || 'automatico (lo stima PPAN)'));
+  log('[web] carico il video sul server (' + MB(fileVideo.size) + ' MB)…');
+  statoMsg('caricamento…');
+  $('esegui').disabled = true; $('annulla').disabled = false;
+  avviaTimer(); setProgresso(null);
+  try {
+    const r = await fetch('/api/job', {method: 'POST', body: fd});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.errore || ('HTTP ' + r.status));
+    jobId = d.id;
+    log('[web] job ' + jobId + ' avviato');
+    ciclo();
+  } catch (e) {
+    log('[ERRORE] ' + e.message, 'e');
+    $('esitoBox').innerHTML = '<div class="errbox">✘ ' + esc(e.message) + '</div>';
+    fineTimer(); aggiornaPulsanti(); $('annulla').disabled = true; statoMsg('errore');
+  }
+}
+
+async function ciclo() {
+  try {
+    const r = await fetch('/api/job/' + jobId);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.errore || ('HTTP ' + r.status));
+    jobCorrente = d;
+    renderLog(d.log || []);
+    renderMeta(d);
+    if (d.stato === 'in_corso') {
+      // PPAN riporta l'avanzamento vero (finestre elaborate): la barra diventa determinata
+      const av = d.meta && d.meta.avanzamento_ppan;
+      statoMsg((d.meta && d.meta.fase ? d.meta.fase : 'in corso…') +
+               ' · ' + elapsed().toFixed(0) + ' s');
+      if (typeof av === 'number') setProgresso(av / 100);
+      timerPoll = setTimeout(ciclo, 900);
+      return;
+    }
+    fineTimer(); setProgresso(1);
+    aggiornaPulsanti(); $('annulla').disabled = true;
+    if (d.stato === 'fatto') { statoMsg('completato'); esito('ok', d); mostraRisultati(d); }
+    else if (d.stato === 'annullato') { statoMsg('annullato'); esito('warn', d); }
+    else { statoMsg('errore'); esito('err', d); }
+    caricaRuns();
+  } catch (e) {
+    log('[ERRORE] ' + e.message, 'e');
+    fineTimer(); setProgresso(1);
+    $('esegui').disabled = !fileVideo; $('annulla').disabled = true;
+  }
+}
+</script>
+
+<script>
+// ------------------------------------------------------------- risultati
+const NOMI = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+function nomeNota(midi) {
+  const n = Math.round(midi);
+  return NOMI[((n % 12) + 12) % 12] + (Math.floor(n / 12) - 1);
+}
+const isNero = (midi) => [1, 3, 6, 8, 10].includes(((midi % 12) + 12) % 12);
+
+function tile(k, v, piccolo) {
+  return '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v' +
+         (piccolo ? ' sm' : '') + '">' + v + '</div></div>';
+}
+
+function statistiche(d) {
+  const r = d.riepilogo || {}, m = d.meta || {}, e = m.estensione || {};
+  const ev = d.eventi || [];
+  let html = '';
+  html += tile('eventi nota', (r.n_eventi || 0));
+  html += tile('note uniche', (r.note_uniche || 0));
+  html += tile('note / secondo', Number(r.note_al_secondo || 0).toFixed(2), true);
+  html += tile('durata media', (r.durata_media || 0) + ' s', true);
+  html += tile('durata video', m.frame_totali && m.fps ? (m.frame_totali / m.fps).toFixed(1) + ' s' : '—', true);
+  html += tile('intervallo', r.intervallo_midi
+        ? nomeNota(r.intervallo_midi[0]) + '–' + nomeNota(r.intervallo_midi[1]) : '—', true);
+  html += tile('tastiera stimata', e.prima_nota !== undefined
+        ? nomeNota(e.prima_nota) + '–' + nomeNota(e.ultima_nota) : '—', true);
+  const conMano = ev.some((x) => x.mano === 'Right' || x.mano === 'Left');
+  html += tile('mano dominante', conMano
+        ? (ev.filter((x) => x.mano === 'Right').length > ev.length / 2 ? 'destra' : 'sinistra') : '—', true);
+  $('stats').innerHTML = html;
+}
+
+function tabella(d) {
+  const tb = $('tabNote').querySelector('tbody');
+  tb.innerHTML = '';
+  const ev = d.eventi || [];
+  ev.forEach((e, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + (i + 1) + '</td><td><b>' + esc(e.nome || nomeNota(e.nota)) + '</b></td>' +
+      '<td class="mono">' + e.nota + '</td><td class="mono">' + e.onset.toFixed(3) + ' s</td>' +
+      '<td class="mono">' + e.offset.toFixed(3) + ' s</td><td class="mono">' + e.durata.toFixed(3) + ' s</td>' +
+      '<td class="mono">' + e.velocity + '</td><td>' + esc(e.mano || '') + '</td>';
+    tb.appendChild(tr);
+  });
+  $('noteInfo').innerHTML = ev.length
+    ? 'Prima nota a ' + ev[0].onset.toFixed(2) + ' s · ultima a ' +
+      ev[ev.length - 1].offset.toFixed(2) + ' s · ordinamento per onset crescente.'
+    : '<b style="color:var(--warn)">Nessun evento nota.</b> Il file <code>song.mid</code> è stato creato ' +
+      'comunque (MIDI valido ma senza note). Cause tipiche: nessuna pressione riconosciuta, soglie troppo ' +
+      'alte, oppure il ramo mani non è partito (nessun mediapipe/venv).';
+}
+
+function collegaFile(d) {
+  const base = '/api/job/' + d.id + '/file/';
+  const disp = new Set(d.risultati || []);
+  const mappa = {dlMidi: 'song.mid', dlJson: 'notes.json', dlGriglia: 'prima_griglia.jpg',
+                 dlDebug: 'debug.mp4', dlPpan: 'notes_ppan.json'};
+  for (const id in mappa) {
+    const a = $(id), nome = mappa[id];
+    const c = disp.has(nome);
+    a.classList.toggle('hidden', !c);
+    if (c) a.href = base + nome;
+  }
+  $('grigliaImg').src = base + 'prima_griglia.jpg';
+  const dbg = $('debugVid');
+  if (disp.has('debug.mp4')) { dbg.src = base + 'debug.mp4'; $('tabDebug').classList.remove('hidden'); }
+  else { dbg.removeAttribute('src'); $('tabDebug').classList.add('hidden'); }
+  $('grigliaInfo').innerHTML = !disp.has('prima_griglia.jpg')
+    ? 'immagine non disponibile per questa esecuzione'
+    : ((d.meta || {}).motore === 'ppan'
+      ? 'In alto il fotogramma con la <b>regione usata da PPAN</b>, sotto la striscia <b>720×122</b> ' +
+        'raddrizzata che la rete ha analizzato: è il controllo più utile quando il risultato è scarso.'
+      : 'La griglia dei tasti disegnata sopra la tastiera reale: le verticali devono cadere sui tasti veri.');
+  $('fileInfo').innerHTML = 'Cartella di lavoro: <code>web_runs/' + esc(d.id) + '/out/</code> · prodotti: ' +
+    (d.risultati || []).map((f) => '<code>' + esc(f) + '</code>').join(' ') +
+    (d.input_eliminato ? ' · video di input eliminato come richiesto' : '');
+}
+
+async function mostraRisultati(d) {
+  $('results').classList.remove('hidden');
+  statistiche(d);
+  tabella(d);
+  collegaFile(d);
+  attivaTab('paneNote');
+  await caricaMidi(d.id);
+}
+
+function attivaTab(pane) {
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.pane === pane));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === pane));
+}
+document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => attivaTab(t.dataset.pane)));
+</script>
+
+<script>
+// ------------------------------------------- elenco delle esecuzioni
+async function caricaRuns() {
+  try {
+    const r = await fetch('/api/jobs');
+    const lista = await r.json();
+    if (!lista.length) { $('runs').innerHTML = '<span style="color:var(--text2)">nessuna esecuzione</span>'; return; }
+    $('runs').innerHTML = lista.map((j) =>
+      '<div class="run" data-id="' + j.id + '">' +
+      '<span class="nm" title="' + esc(j.video || '') + '">' + esc(j.video || j.id) + '</span>' +
+      '<span class="st ' + esc(j.stato || '') + '">' + esc(j.stato || '?') + '</span>' +
+      '<span class="mono" style="color:var(--text2);font-size:11px">' +
+      (j.motore === 'ppan' ? 'PPAN · ' : '') +
+      (j.n_eventi == null ? '–' : j.n_eventi) + ' note</span></div>').join('');
+    $('runs').querySelectorAll('.run').forEach((el) =>
+      el.addEventListener('click', () => apriJob(el.dataset.id)));
+  } catch (e) { /* elenco non disponibile: nessun problema */ }
+}
+
+async function apriJob(id) {
+  try {
+    const r = await fetch('/api/job/' + id);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.errore || ('HTTP ' + r.status));
+    jobId = id; jobCorrente = d;
+    $('log').innerHTML = ''; nLog = 0;
+    renderLog(d.log || []);
+    renderMeta(d);
+    esito(d.stato === 'fatto' ? 'ok' : (d.stato === 'errore' ? 'err' : 'warn'), d);
+    statoMsg('esecuzione ' + id + (d.creato_il ? ' del ' + d.creato_il : ''));
+    if (d.stato === 'fatto') mostraRisultati(d);
+  } catch (e) { log('[ERRORE] ' + e.message, 'e'); }
+}
+
+// --------------------------------------------------------- azioni globali
+$('esegui').addEventListener('click', esegui);
+$('annulla').addEventListener('click', async () => {
+  if (!jobId) return;
+  try {
+    const r = await fetch('/api/job/' + jobId + '/annulla', {method: 'POST'});
+    const d = await r.json();
+    log('[web] annullamento: ' + (d.esito || d.errore));
+  } catch (e) { log('[ERRORE] ' + e.message, 'e'); }
+});
+$('pulisci').addEventListener('click', async () => {
+  if (!jobId) { log('[web] nessuna esecuzione da pulire'); return; }
+  if (!confirm('Eliminare i file di questa esecuzione (video caricato, log, risultati)?')) return;
+  try {
+    const r = await fetch('/api/job/' + jobId + '/elimina', {method: 'POST'});
+    const d = await r.json();
+    log('[web] pulizia: ' + (d.esito || d.errore));
+    $('results').classList.add('hidden');
+    jobId = null;
+    caricaStato(); caricaRuns();
+  } catch (e) { log('[ERRORE] ' + e.message, 'e'); }
+});
+$('copiaLog').addEventListener('click', async () => {
+  const testo = Array.from($('log').children).map((x) => x.textContent).join('\n');
+  try { await navigator.clipboard.writeText(testo); log('[web] log copiato negli appunti'); }
+  catch (e) { log('[web] copia non riuscita: seleziona il testo a mano', 'w'); }
+});
+</script>
+
+<script>
+// ============================ PARSER STANDARD MIDI FILE ====================
+// Legge davvero song.mid (formati 0/1, running status, meta tempo) e converte
+// i tick in secondi assoluti: e' la stessa informazione che usa qualsiasi DAW.
+function parseSMF(buf) {
+  const dv = new DataView(buf);
+  const u8 = (o) => dv.getUint8(o), u16 = (o) => dv.getUint16(o), u32 = (o) => dv.getUint32(o);
+  const tag = (o) => String.fromCharCode(u8(o), u8(o+1), u8(o+2), u8(o+3));
+  if (buf.byteLength < 14 || tag(0) !== 'MThd') throw new Error('non è un file MIDI (manca MThd)');
+  const lenH = u32(4), formato = u16(8), divisione = u16(12);
+  const ticksPerBeat = (divisione & 0x8000) ? 0 : divisione;
+  let p = 8 + lenH;
+  const grezze = [], tempi = [{tick: 0, us: 500000}];
+  let tracce = 0, eventiTot = 0;
+  while (p + 8 <= buf.byteLength) {
+    if (tag(p) !== 'MTrk') { p += 8 + u32(p + 4); continue; }
+    const fine = p + 8 + u32(p + 4);
+    p += 8; tracce++;
+    let tick = 0, stato = 0, b, d;
+    const aperte = {};
+    while (p < fine) {
+      d = 0; do { b = u8(p++); d = (d << 7) | (b & 0x7f); } while (b & 0x80);
+      tick += d;
+      if (p >= fine) break;
+      const peek = u8(p);
+      if (peek & 0x80) { stato = peek; p++; }
+      else if (stato === 0) break;                    // stato implicito senza status: fermati
+      const tipo = stato & 0xf0, ch = stato & 0x0f;
+      if (stato === 0xff) {
+        const meta = u8(p++);
+        let l = 0; do { b = u8(p++); l = (l << 7) | (b & 0x7f); } while (b & 0x80);
+        if (meta === 0x51 && l === 3) tempi.push({tick, us: (u8(p) << 16) | (u8(p+1) << 8) | u8(p+2)});
+        p += l; eventiTot++;
+      } else if (stato === 0xf0 || stato === 0xf7) {
+        let l = 0; do { b = u8(p++); l = (l << 7) | (b & 0x7f); } while (b & 0x80);
+        p += l; eventiTot++;
+      } else if (tipo === 0x90 || tipo === 0x80) {
+        const nota = u8(p), vel = u8(p + 1); p += 2;
+        const k = ch + ':' + nota;
+        if (tipo === 0x90 && vel > 0) aperte[k] = {tick, vel};
+        else if (aperte[k]) { grezze.push({on: aperte[k].tick, off: tick, nota, vel: aperte[k].vel}); delete aperte[k]; }
+        eventiTot++;
+      } else if (tipo === 0xc0 || tipo === 0xd0) { p += 1; eventiTot++; }
+      else { p += 2; eventiTot++; }
+      if (p > fine) { p = fine; break; }
+    }
+    for (const k in aperte)
+      grezze.push({on: aperte[k].tick, off: tick, nota: parseInt(k.split(':')[1], 10), vel: aperte[k].vel});
+    p = fine;
+  }
+  if (!ticksPerBeat) throw new Error('MIDI con divisione SMPTE: non supportato dal player');
+  tempi.sort((a, b) => a.tick - b.tick);
+  const seg = [{tick: 0, us: tempi[0].us}];
+  for (let i = 1; i < tempi.length; i++)
+    if (tempi[i].tick > seg[seg.length - 1].tick) seg.push(tempi[i]);
+  const secAt = (t) => {
+    let s = 0;
+    for (let i = 0; i < seg.length; i++) {
+      const t0 = seg[i].tick, t1 = (i + 1 < seg.length) ? seg[i + 1].tick : Infinity;
+      s += Math.max(0, Math.min(t, t1) - t0) / ticksPerBeat * (seg[i].us / 1e6);
+      if (t <= t1) break;
+    }
+    return s;
+  };
+  const note = grezze.filter((n) => n.off > n.on && n.nota >= 0 && n.nota <= 127)
+    .map((n) => ({note: n.nota, velocity: n.vel, start: secAt(n.on), end: secAt(n.off)}))
+    .sort((a, b) => a.start - b.start || a.note - b.note);
+  for (const n of note) n.duration = Math.max(0.02, n.end - n.start);
+  return {formato, tracce, ticksPerBeat, tempi: seg, note, eventiTot};
+}
+
+// ------------------------------------------- caricamento del risultato
+let evSuonate = [], sorgenteNote = '—', durataBrano = 0, posCorrente = 0;
+
+function hexDump(u8arr, n) {
+  const righe = [];
+  for (let i = 0; i < Math.min(n, u8arr.length); i += 16) {
+    const pezzo = Array.from(u8arr.slice(i, i + 16))
+      .map((b) => b.toString(16).padStart(2, '0')).join(' ');
+    righe.push(i.toString(16).padStart(4, '0') + '  ' + pezzo);
+  }
+  return righe.join('\n');
+}
+
+async function caricaMidi(id) {
+  const url = '/api/job/' + id + '/file/';
+  evSuonate = []; sorgenteNote = '—'; posCorrente = 0;
+  $('playBtn').disabled = true;
+  let info = '';
+  try {
+    const r = await fetch(url + 'song.mid');
+    if (r.ok) {
+      const buf = await r.arrayBuffer();
+      $('hexMid').textContent = 'song.mid — ' + buf.byteLength + ' byte, intestazione:\n' +
+                                hexDump(new Uint8Array(buf), 48);
+      const d = parseSMF(buf);
+      const bpm = 60000000 / (d.tempi[0] ? d.tempi[0].us : 500000);
+      info = 'SMF tipo ' + d.formato + ' · ' + d.tracce + ' traccia/e · ' + d.ticksPerBeat +
+             ' tick/battuta · ' + bpm.toFixed(1) + ' BPM · ' + d.eventiTot + ' eventi MIDI';
+      if (d.note.length) { evSuonate = d.note; sorgenteNote = 'song.mid'; }
+    } else {
+      $('hexMid').textContent = 'song.mid non disponibile (HTTP ' + r.status + ')';
+    }
+  } catch (e) {
+    log('lettura di song.mid: ' + e.message, 'w');
+    $('hexMid').textContent = 'song.mid non leggibile: ' + e.message;
+  }
+  if (!evSuonate.length) {                       // ripiego sul JSON degli eventi
+    try {
+      const r2 = await fetch(url + 'notes.json');
+      if (r2.ok) {
+        const j = await r2.json();
+        evSuonate = (j.eventi || []).map((e) => ({note: e.nota, velocity: e.velocity,
+          start: e.onset, end: e.offset, duration: Math.max(0.02, e.durata)}));
+        if (evSuonate.length) sorgenteNote = 'notes.json (ripiego)';
+      }
+    } catch (e) { /* niente ripiego */ }
+  }
+  durataBrano = evSuonate.length ? Math.max.apply(null, evSuonate.map((n) => n.end)) : 0;
+  $('smfInfo').textContent = info ? (info + ' · ' + evSuonate.length + ' note da ' + sorgenteNote) :
+                                   ('nessuna nota da suonare (' + sorgenteNote + ')');
+  $('playBtn').disabled = !evSuonate.length;
+  disegnaRoll(0);
+  disegnaTastiera(0);
+  aggiornaOrologio(0);
+}
+</script>
+
+<script>
+// =================== AUDIO: sintesi locale con Web Audio ==================
+let audioCtx = null, master = null, programmati = [], inRiproduzione = false;
+let tOrigine = 0, raf = null;
+
+function contesto() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    master = audioCtx.createGain();
+    master.gain.value = parseFloat($('vol').value);
+    master.connect(audioCtx.destination);
+  }
+  return audioCtx;
+}
+
+function suonaNota(midi, velocity, durata, strumento, quando) {
+  const c = contesto(), freq = 440 * Math.pow(2, (midi - 69) / 12);
+  const vol = (velocity / 127) * 0.35;
+  const osc = c.createOscillator(), osc2 = c.createOscillator();
+  const g = c.createGain(), f = c.createBiquadFilter();
+  if (strumento === 'epiano') {
+    osc.type = 'sine'; osc2.type = 'triangle'; osc2.frequency.value = freq * 4;
+    f.type = 'lowpass'; f.frequency.value = 5000;
+  } else if (strumento === 'organ') {
+    osc.type = 'square'; osc2.type = 'square'; osc2.frequency.value = freq * 1.5;
+    f.type = 'lowpass'; f.frequency.value = 2000;
+  } else if (strumento === 'synth') {
+    osc.type = 'sawtooth'; osc2.type = 'sine'; osc2.frequency.value = freq * 0.5;
+    f.type = 'lowpass'; f.frequency.value = 1500; f.Q.value = 5;
+  } else {
+    osc.type = 'triangle'; osc2.type = 'sine'; osc2.frequency.value = freq * 2;
+    f.type = 'lowpass'; f.frequency.value = 3000;
+  }
+  osc.frequency.value = freq;
+  osc.connect(f); osc2.connect(f); f.connect(g); g.connect(master);
+  const att = 0.008, ril = Math.min(0.45, Math.max(0.05, durata * 0.5));
+  const t0 = Math.max(quando, c.currentTime);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.linearRampToValueAtTime(vol, t0 + att);
+  g.gain.setValueAtTime(vol, t0 + Math.max(att, durata - ril));
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + durata + ril);
+  osc.start(t0); osc2.start(t0);
+  osc.stop(t0 + durata + ril + 0.05); osc2.stop(t0 + durata + ril + 0.05);
+  return [osc, osc2];
+}
+
+function fermaSuoni() {
+  for (const coppia of programmati) for (const o of coppia) { try { o.stop(); } catch (e) {} }
+  programmati = [];
+}
+
+function fermaPlayback() {
+  inRiproduzione = false;
+  fermaSuoni();
+  if (raf) cancelAnimationFrame(raf);
+  raf = null;
+  $('playBtn').textContent = '▶';
+}
+
+function fermaAudio() { fermaPlayback(); posCorrente = 0; }
+
+function riproduci() {
+  if (!evSuonate.length) return;
+  const c = contesto();
+  if (c.resume) c.resume();
+  fermaSuoni();
+  inRiproduzione = true;
+  $('playBtn').textContent = '⏸';
+  const base = c.currentTime + 0.06;
+  tOrigine = base - posCorrente;
+  programmati = [];
+  for (const n of evSuonate) {
+    if (n.end <= posCorrente) continue;
+    programmati.push(suonaNota(n.note, n.velocity, n.duration, $('instr').value,
+                               base + Math.max(0, n.start - posCorrente)));
+  }
+  const passo = () => {
+    if (!inRiproduzione) return;
+    const pos = c.currentTime - tOrigine;
+    if (pos >= durataBrano + 0.25) {
+      if ($('loopChk').checked) { posCorrente = 0; riproduci(); return; }
+      fermaPlayback();
+      posCorrente = 0;
+      disegnaRoll(0); disegnaTastiera(0); aggiornaOrologio(0);
+      return;
+    }
+    posCorrente = Math.max(0, pos);
+    aggiornaOrologio(posCorrente);
+    disegnaRoll(posCorrente);
+    disegnaTastiera(posCorrente);
+    raf = requestAnimationFrame(passo);
+  };
+  raf = requestAnimationFrame(passo);
+}
+
+function aggiornaOrologio(pos) {
+  $('clock').textContent = fmtT(pos) + ' / ' + fmtT(durataBrano);
+}
+
+$('playBtn').addEventListener('click', () => { if (inRiproduzione) fermaPlayback(); else riproduci(); });
+$('stopBtn').addEventListener('click', () => {
+  fermaPlayback();
+  posCorrente = 0;
+  disegnaRoll(0); disegnaTastiera(0); aggiornaOrologio(0);
+});
+$('vol').addEventListener('input', () => { if (master) master.gain.value = parseFloat($('vol').value); });
+$('instr').addEventListener('change', () => {
+  if (inRiproduzione) { const p = posCorrente; fermaPlayback(); posCorrente = p; riproduci(); }
+});
+$('tempo').addEventListener('change', () => disegnaRoll(posCorrente));
+</script>
+
+<script>
+// ================================ DISEGNO =================================
+function disegnaRoll(pos) {
+  const cv = $('roll');
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  const LARG = 54, KH = 13;
+  if (!evSuonate.length) {
+    cv.width = 660; cv.height = 110; cv.style.width = '660px'; cv.style.height = '110px';
+    ctx.fillStyle = '#0d0d15'; ctx.fillRect(0, 0, 660, 110);
+    ctx.fillStyle = '#8888a0'; ctx.font = '12px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('Nessuna nota da disegnare: il MIDI è valido ma vuoto (0 eventi).', 14, 46);
+    ctx.fillText('Prova con “senza mani” per controllare la griglia, o abbassa la soglia di confidenza.', 14, 68);
+    return;
+  }
+  const min = Math.max(0, Math.min.apply(null, evSuonate.map((n) => n.note)) - 2);
+  const max = Math.min(127, Math.max.apply(null, evSuonate.map((n) => n.note)) + 2);
+  const nKeys = max - min + 1;
+  const durata = Math.max(durataBrano, 0.4);
+  const pps = Math.max(26, Math.min(150, 780 / durata));
+  const battuta = 60 / Math.max(30, parseFloat($('tempo').value) || 120);
+  const W = Math.round(LARG + (durata + 0.3) * pps), H = nKeys * KH;
+  cv.width = W; cv.height = H; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  ctx.fillStyle = '#0d0d15'; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < nKeys; i++) {
+    const m = max - i, y = i * KH;
+    ctx.fillStyle = isNero(m) ? '#14141e' : '#171724';
+    ctx.fillRect(LARG, y, W - LARG, KH);
+    ctx.strokeStyle = '#22222f'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(LARG, y + 0.5); ctx.lineTo(W, y + 0.5); ctx.stroke();
+    if (!isNero(m)) {
+      ctx.fillStyle = '#6b7280'; ctx.font = '9px ui-monospace,monospace'; ctx.textAlign = 'right';
+      ctx.fillText(nomeNota(m), LARG - 5, y + KH - 3);
+    }
+  }
+  for (let b = 0; b * battuta <= durata + 0.3; b++) {
+    const x = LARG + b * battuta * pps;
+    ctx.strokeStyle = (b % 4 === 0) ? '#3a3a5a' : '#232333';
+    ctx.lineWidth = (b % 4 === 0) ? 1 : 0.5;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (const n of evSuonate) {
+    const y = (max - n.note) * KH, x = LARG + n.start * pps;
+    const w = Math.max(2, n.duration * pps - 1);
+    const attiva = (pos >= n.start && pos < n.end);
+    const grad = ctx.createLinearGradient(x, y, x, y + KH);
+    grad.addColorStop(0, attiva ? '#7ef0d4' : '#00d4aa');
+    grad.addColorStop(1, attiva ? '#00d4aa' : '#0a8f74');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y + 1, w, KH - 2, 2); else ctx.rect(x, y + 1, w, KH - 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,' + ((n.velocity / 127) * 0.28) + ')';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y + 1, w, KH - 2, 2); else ctx.rect(x, y + 1, w, KH - 2);
+    ctx.fill();
+  }
+  const xp = LARG + pos * pps;
+  ctx.strokeStyle = '#f472b6'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(xp, 0); ctx.lineTo(xp, H); ctx.stroke();
+  const wrap = cv.parentElement;
+  if (wrap && wrap.clientWidth) {
+    const vl = wrap.scrollLeft, vw = wrap.clientWidth;
+    if (xp < vl + 30 || xp > vl + vw - 30) wrap.scrollLeft = Math.max(0, xp - vw / 2);
+  }
+}
+
+function disegnaTastiera(pos) {
+  const cont = $('kbd'), cv = $('kbdCanvas');
+  if (!cont || !cv) return;
+  const ctx = cv.getContext('2d');
+  const W = Math.max(320, cont.clientWidth || 640), H = 74;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (!evSuonate.length) {
+    ctx.fillStyle = '#0d0d15'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#5f6b7d'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('tastiera inattiva: nessuna nota da mostrare', W / 2, H / 2 + 4);
+    return;
+  }
+  const lo = Math.max(0, Math.min.apply(null, evSuonate.map((n) => n.note)) - 1);
+  const hi = Math.min(127, Math.max.apply(null, evSuonate.map((n) => n.note)) + 1);
+  const bianche = [];
+  for (let m = lo; m <= hi; m++) if (!isNero(m)) bianche.push(m);
+  const lb = W / bianche.length;
+  const attive = new Set();
+  for (const n of evSuonate) if (pos >= n.start && pos < n.end) attive.add(n.note);
+  bianche.forEach((m, i) => {
+    const x = i * lb;
+    ctx.fillStyle = attive.has(m) ? '#00d4aa' : '#e8e8f0';
+    ctx.fillRect(x + 0.5, 0, lb - 1, H);
+    ctx.strokeStyle = '#2a2a3a'; ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, 0.5, lb - 1, H - 1);
+    if (m % 12 === 0) {
+      ctx.fillStyle = attive.has(m) ? '#04211a' : '#7b8494';
+      ctx.font = '9px ui-monospace,monospace'; ctx.textAlign = 'center';
+      ctx.fillText(nomeNota(m), x + lb / 2, H - 6);
+    }
+  });
+  for (let m = lo; m <= hi; m++) {
+    if (!isNero(m)) continue;
+    let i = -1;
+    for (let k = 0; k < bianche.length; k++) { if (bianche[k] < m) i = k; else break; }
+    if (i < 0) continue;
+    const ln = lb * 0.62, hn = H * 0.62, x = (i + 1) * lb - ln / 2;
+    ctx.fillStyle = attive.has(m) ? '#00a884' : '#181820';
+    ctx.fillRect(x, 0, ln, hn);
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, 0.5, ln - 1, hn - 1);
+  }
+}
+
+document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
+  if (t.dataset.pane === 'paneRoll') { disegnaRoll(posCorrente); disegnaTastiera(posCorrente); }
+}));
+window.addEventListener('resize', () => disegnaTastiera(posCorrente));
+
+// ================================== AVVIO =================================
+caricaStato();
+caricaRuns();
+log('[web] pronto: scegli un video di pianoforte e premi “Esegui la pipeline”.');
+log('[web] il primo avvio carica i pesi YOLO (qualche secondo); l’esecuzione può durare minuti.');
+</script>
+</body>
+</html>

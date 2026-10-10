@@ -1,0 +1,77 @@
+--- /tmp/griglia_ORIG_backup.py	2026-10-03 22:10:50
++++ /Users/alessandrolocurcio/Downloads/piano-detector/griglia_prospettica.py	2026-10-03 22:31:50
+@@ -22,7 +22,11 @@
+ LW = 6.2          # lunghezza visibile dei bianchi
+ BW = 0.66         # larghezza del nero (in bianchi)
+ V_FELTRO = -0.08  # posizione v del feltro rosso
+-NOTA_MIN, NOTA_MAX = 36, 96
++# Estensione del modello: gli 88 tasti di un pianoforte (A0..C8), come gia' fanno
++# sagome.py (`nota_min=21, nota_max=108`) e to_midi.py. Con 36..96 (C2..C7, 61 tasti) i
++# tasti fuori finestra NON esistono nel lessico: in un video che inquadra la tastiera
++# intera il bordo sinistro restava senza griglia e le pressioni li' non si vedevano.
++NOTA_MIN, NOTA_MAX = 21, 108
+ _SOGLIA_FERMO = 0.05      # differenza media (livelli) sotto cui l'immagine e' "ferma"
+ _SOGLIA_TAGLIO = 20.0     # differenza media sopra cui si ha un cambio di inquadratura
+ 
+@@ -350,12 +354,17 @@
+     """
+     Frame 0, automatico: neri a due quote -> gruppi 2/3 dal passo -> omografia grezza.
+     `nota_gruppo2` = nota del primo nero del gruppo da DUE neri piu' vicino al centro
+-    (C#4 = 61 di default). Lo schema 2/3 fissa la nota entro l'ottava, non l'ottava.
++    DELLA TASTIERA (C#4 = 61 di default). Lo schema 2/3 fissa la nota entro l'ottava,
++    non l'ottava: il riferimento deve essere il centro della tastiera e non del frame,
++    perche' con l'inquadratura decentrata il gruppo piu' vicino al centro del frame e'
++    quello di un'ottava sopra e tutte le note escono 12 semitoni basse.
+     """
+     g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+     h, w = g.shape
+     T = _soglia(g)
+-    lo, hi = 0.015 * w, 0.075 * w
++    # Minimo a ~0.4% di w: con la tastiera lontana i neri veri sono 6-7 px (a w=848 il
++    # vecchio minimo 0.015*w = 12.7 px li scartava tutti -> nessun nero, ancoraggio impossibile).
++    lo, hi = max(2.5, 0.004 * w), 0.075 * w
+ 
+     def neri_riga(y):
+         return [((a + b) / 2.0, b - a) for a, b in _runs(g[y] < T) if lo <= b - a <= hi]
+@@ -389,6 +398,17 @@
+     sp = np.diff(ra)
+     piccolo = float(np.median(sp[sp < 1.4 * sp.min()]))
+     wpx = piccolo / 1.15
++    # Centro della tastiera: i neri veri formano uno span senza buchi grandi, i blob fuori
++    # tastiera (corpo del pianoforte, fondo) hanno buchi >= 3 passi e si tagliano dal centro
++    # in fuori. Serve per l'ottava (vedi docstring): e' il centro della tastiera, non del frame.
++    reg = [float(x) for x in ra]
++    c0 = int(np.argmin(np.abs(np.asarray(reg) - np.median(reg))))
++    im, jm = c0, c0
++    while im > 0 and reg[im] - reg[im - 1] <= 3.6 * piccolo:
++        im -= 1
++    while jm + 1 < len(reg) and reg[jm + 1] - reg[jm] <= 3.6 * piccolo:
++        jm += 1
++    xc_tast = 0.5 * (reg[im] + reg[jm])
+     grande = sp > 1.4 * sp.min()
+     # gruppi separati dai passi grandi
+     gruppi, cur = [], [0]
+@@ -401,7 +421,7 @@
+     due = [k for k, gp in enumerate(gruppi) if len(gp) == 2]
+     if not due:
+         raise RuntimeError("nessun gruppo da 2 neri completo sul primo frame")
+-    k2 = min(due, key=lambda k: abs(np.mean([ra[i] for i in gruppi[k]]) - w / 2))
++    k2 = min(due, key=lambda k: abs(np.mean([ra[i] for i in gruppi[k]]) - xc_tast))
+     # assegno le note: C# D# | F# G# A# | C# D# | ...
+     seq = [1, 3, 6, 8, 10]
+     note = {}
+@@ -413,9 +433,13 @@
+     ordine = [n for n in range(NOTA_MIN, NOTA_MAX + 1) if e_nero(n)]
+     j0 = ordine.index(nota_gruppo2)
+     for i in range(len(ra)):
+-        note[i] = ordine[j0 + (i - i0)]
++        j = j0 + (i - i0)
++        # neri rilevati oltre il range del modello: si scartano (prima IndexError).
++        note[i] = ordine[j] if 0 <= j < len(ordine) else None
+     src, dst = [], []
+     for i in range(len(ra)):
++        if note[i] is None:
++            continue
+         u = u_nero(note[i])
+         src += [(u, (ya - ys[0]) / wpx), (u, (yb - ys[0]) / wpx)]
+         dst += [(ra[i], ya), (rb[i], yb)]
