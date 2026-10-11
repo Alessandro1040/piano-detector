@@ -2983,7 +2983,7 @@ def _banda_tastiera(H_abs, margine_u=0.5, v0=-0.5, v1=None):
     return np.float64(G.proietta(np.asarray(H_abs, dtype=float), [(u0, v0), (u1, v0), (u1, v1), (u0, v1)]))
 
 
-def stringi_rettangolo(H, rect, forma):
+def stringi_rettangolo(H, rect, forma, margine=0.3, fondo=7.0):
     """Stringe il ritaglio attorno ai soli tasti: `(rect, H)` nuovi, oppure None se non serve.
 
     Su una ripresa larga il ritaglio automatico puo' essere tutto il fotogramma: tastiera, muro,
@@ -2992,9 +2992,19 @@ def stringi_rettangolo(H, rect, forma):
     Si stringe solo se cosi' l'area scende almeno al 60%: nel primo piano (la tastiera esce dal
     fotogramma) la banda e' gia' quasi tutto il ritaglio e non cambia niente.
     `H` e' nelle coordinate del ritaglio: la nuova H e' quella del nuovo ritaglio.
+
+    La banda tiene i margini CHIESTI (`--margine` sopra, `--fondo` sotto). Sopra il retro dei
+    tasti ci stanno le DITA, e chi consuma il video preparato (il progetto "video -> MIDI",
+    `comune.py`) raddrizza una striscia di 9 unita' che comincia 2,4 unita' SOPRA il retro (vedi
+    `comune.V_LO`) e finisce a 6,6: chiedendo `--margine 2.5` si copre quella finestra, e con i
+    valori di prima (0,3/7,0 fissi) il ritaglio stretto la tagliava e la striscia usciva nera in
+    alto di 9-10 righe su 144 -- misurato su `video5906842636420915152.mp4`, dove il ritaglio
+    stretto passava da 582x70 a 582x84 e le righe nere in alto andavano da 9 a 0.
+    Il mezzo passo di margine sotto il retro resta comunque il minimo (era il valore fisso di
+    prima): chiedendo meno di cosi' la banda non si stringe oltre.
     """
     h, w = forma
-    q = _banda_tastiera(_H_assoluta(H, rect))
+    q = _banda_tastiera(_H_assoluta(H, rect), v0=-max(float(margine), 0.5), v1=fondo)
     x1, y1 = max(0, int(np.floor(q[:, 0].min()))), max(0, int(np.floor(q[:, 1].min())))
     x2, y2 = min(w, int(np.ceil(q[:, 0].max()))), min(h, int(np.ceil(q[:, 1].max())))
     nuovo = _pari((x1, y1, x2, y2))
@@ -4819,7 +4829,7 @@ def main():
     # all'immagine e i tasti occupano poco del ritaglio, si stringe ai soli tasti. Un rettangolo
     # dato a mano (--rettangolo) non si tocca.
     if not a.rettangolo and float(info.get("ecc_cc") or 0.0) >= 0.8 and info["verdetto"] != "rifiuto":
-        stretto = stringi_rettangolo(H, rect, frame.shape[:2])
+        stretto = stringi_rettangolo(H, rect, frame.shape[:2], a.margine, a.fondo)
         if stretto is not None:
             info["rettangolo_automatico_largo"] = [int(v) for v in rect]
             rect, H = stretto
@@ -4904,30 +4914,35 @@ def main():
                 # qui non lo dice l'inseguimento (ha fallito: e' il numero di cui NON fidarsi), lo
                 # dicono i 4 angoli dei tasti misurati in `tastiera_ferma` -- la misura indipendente
                 # che ha acceso l'inseguimento. Sopra `_SOGLIA_SEGUI_TASTI` il ritaglio fermo perde
-                # la tastiera (vedi la costante) e qui il passo 0 non sa seguirla: meglio rifiutare
-                # il pezzo che consegnare un video con i riquadri accanto ai tasti per tutto il
-                # pezzo. Misurato su `document_5931401697506107171.mp4` (478x850, telefono a mano,
-                # tastiera obliqua e sfocata): gli angoli si spostano di 54,1 px in x e 21,3 px in y
-                # (tolleranze 8 e 12) dentro un ritaglio alto 68 px e l'inseguimento aggancia 12
-                # fotogrammi su 80 -- dopo il motion blur dei fotogrammi 12-14 non si riprende piu'
-                # (con piu' punti di riferimento, modo affine e soglie di aggancio piu' basse: 12-31
-                # su 80, tutte misurate). Prima usciva lo stesso un video 478x68 "stabilizzato" con
-                # la griglia sul muro: adesso il pezzo si rifiuta e il perche' sta nel json.
-                # `--insegui 0` resta il modo esplicito di chiedere lo stesso il ritaglio fermo.
+                # la tastiera (vedi la costante) e qui il passo 0 non sa seguirla.
+                # Misurato su `document_5931401697506107171.mp4` (478x850, telefono a mano,
+                # tastiera alta 38 px, obliqua e sfocata): gli angoli si spostano di 54,1 px in x e
+                # 21,3 px in y (tolleranze 8 e 12), l'inseguimento aggancia 12 fotogrammi su 80 e il
+                # pezzo non si recupera con un inseguitore diverso -- provati, tutti misurati:
+                # registrazione LK (22/80 campioni con la banda dei tasti a posto), ECC affine (1/80),
+                # template matching a scala ridotta (18/80) e la misura della tastiera fotogramma per
+                # fotogramma (12/80 fotogrammi misurabili, e la x del tasto 60 salta di 100 px fra
+                # una misura e l'altra).
+                # QUEL CHE SI SCRIVE LO DICE `ritaglio_video`: con `Ms = None` il video e' il
+                # ritaglio FERMO del primo fotogramma (vedi `stabilizza_previsto`), il verdetto
+                # scende a "incerto" e la ragione resta nel json e nella pagina. Il pezzo non si
+                # butta -- chi guarda il video decide se gli basta -- ma il messaggio dice chiaro che
+                # quei riquadri escono dai tasti dopo pochi fotogrammi e che cosi' non si addestra.
                 if (angoli or {}).get("decisa") == "si muove":
                     motivo = (f"la tastiera si muove ({angoli['x_max_px']:.0f} px in x e "
                               f"{angoli['y_max_px']:.0f} px in y, oltre i "
                               f"{angoli['tolleranza_x_px']:.0f}/{angoli['tolleranza_y_px']:.0f} px di "
                               f"tolleranza) e l'inseguimento non l'ha tenuta "
                               f"({inseguito['agganciati']} fotogrammi su {inseguito['frame']} "
-                              f"agganciati, inlier mediano {inseguito['inlier_mediano']}): col "
-                              f"ritaglio fermo sul primo fotogramma la griglia esce dai tasti, quindi "
-                              f"il video preparato non si scrive (un pezzo che si muove vuole una "
-                              f"ripresa che lo tenga in campo; `--insegui 0` scrive lo stesso il "
-                              f"ritaglio del primo fotogramma)")
-                    info["verdetto"] = "rifiuto"
+                              f"agganciati, inlier mediano {inseguito['inlier_mediano']}): il video "
+                              f"preparato e' il ritaglio FERMO del primo fotogramma e la griglia "
+                              f"esce dai tasti dopo pochi fotogrammi (un pezzo che si muove vuole "
+                              f"una ripresa che lo tenga in campo: con questo ritaglio non si "
+                              f"addestra)")
+                    if info["verdetto"] == "ok":
+                        info["verdetto"] = "incerto"
                     info["perche"] = f"{info['perche']}; {motivo}" if info["perche"] else motivo
-                    print(f"[!] pezzo rifiutato: {motivo}")
+                    print(f"[!] {motivo}")
             elif inseguito["spostamento_tasti"] > _SOGLIA_SEGUI_TASTI:
                 print(f"[inseguito] la tastiera si muove: il video si ritaglia seguendola e la "
                       f"griglia resta appiccicata ai tasti (sopra {_SOGLIA_SEGUI_TASTI} tasti)")
