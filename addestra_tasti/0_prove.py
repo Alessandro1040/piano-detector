@@ -732,6 +732,26 @@ if _prep.is_file():
     prova("e `lb_al_fronte` la passa ai disegni: 5,0 unità (il modello ne disegna 4,1)",
           _lb_t is not None and abs(_lb_t - 5.0) < 0.2, f"{_lb_t}")
 
+    # Il ritaglio stretto (`stringi_rettangolo`) tiene i margini CHIESTI: sopra il retro dei tasti
+    # ci stanno le DITA, e chi raddrizza la striscia (progetto "video -> MIDI", `comune.V_LO`)
+    # incomincia 2,4 unità SOPRA il retro (v = -2,4): senza quei margini la striscia esce nera
+    # proprio in alto (misurato su `video5906842636420915152.mp4`: 9-10 righe nere su 144 prima,
+    # 0 dopo). `--margine` deve arrivare lassù, e chiedendo meno del minimo storico (0,5 unità) il
+    # ritaglio non deve stringersi ancora più di così.
+    _rect_m = (0, 0, 500, 200)
+    _s03 = prep0.stringi_rettangolo(_Ht, _rect_m, (200, 500), 0.3, 7.0)
+    _s25 = prep0.stringi_rettangolo(_Ht, _rect_m, (200, 500), 2.5, 7.0)
+    _s01 = prep0.stringi_rettangolo(_Ht, _rect_m, (200, 500), 0.1, 7.0)
+    prova("il ritaglio stretto sale col margine chiesto (--margine 2.5: 2,0 unità in più di 0,3)",
+          _s03 is not None and _s25 is not None and _s25[0][1] == _s03[0][1] - 16,
+          "nessun ritaglio" if _s25 is None else f"y1 {_s25[0][1]} contro {_s03[0][1]}")
+    prova("col margine chiesto la banda copre la finestra della striscia (2,4 unità sopra il retro)",
+          _s25 is not None and _s25[0][1] <= 60.0 - 2.4 * 8.0 + 1,
+          "nessun ritaglio" if _s25 is None else f"y1 {_s25[0][1]}")
+    prova("chiedendo meno del minimo (0,5) il ritaglio non si stringe ancora",
+          _s01 is not None and _s03 is not None and _s01[0] == _s03[0],
+          "nessun ritaglio" if _s01 is None else str(_s01[0]))
+
 else:
     print("  (0_prepara.py non trovato: salto i controlli sul verdetto)")
 
